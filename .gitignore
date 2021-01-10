@@ -1,0 +1,4 @@
+.ammonite
+.metals
+.vscode
+.dotty-*
