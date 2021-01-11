@@ -8,12 +8,12 @@ sealed trait Activation[T] {
 trait Relu[T] extends Activation[T]
 trait Sigmoid[T] extends Activation[T]
 
-implicit val relu = new Relu[Double] {
-  override def apply(x: Double): Double = math.max(0, x)
+implicit val relu = new Relu[Float] {
+  override def apply(x: Float): Float = math.max(0, x)
 }
 
-implicit val sigmoid = new Sigmoid[Double] {
-  override def apply(x: Double): Double = 1 / (1 + math.exp(-x))
+implicit val sigmoid = new Sigmoid[Float] {
+  override def apply(x: Float): Float = 1 / (1 + math.exp(-x).toFloat)
 }
 
 sealed trait Layer[T] {
@@ -22,8 +22,6 @@ sealed trait Layer[T] {
 }
 case class Dense[T](units: Int = 1)(implicit val f: Activation[T])
     extends Layer[T]
-
-//case class LayerState[T](data: Array[T])
 
 sealed trait Model[T] {
   def layers: List[Layer[T]]
@@ -34,24 +32,35 @@ sealed trait Tensor[T] {
   type A
   def data: Array[A]
   def length: Int = data.length
+  def sizes: List[Int]
 }
 case class Tensor1D[T: ClassTag](data: Array[T]) extends Tensor[T] {
   type A = T
 
+  override def sizes: List[Int] = List(data.length)
+
   override def toString(): String = {
-    val name = s"Tensor1D[${implicitly[ClassTag[T]]}]"
-    s"$name:\n[" + data.mkString(",") + "]"
+    val meta = s"sizes: ${sizes.head}, Tensor1D[${implicitly[ClassTag[T]]}]"
+    s"$meta:\n[" + data.mkString(",") + "]\n"
   }
 }
 case class Tensor2D[T: ClassTag](data: Array[Array[T]]) extends Tensor[T] {
   type A = Array[T]
 
+  override def sizes: List[Int] =
+    List(data.length, data.headOption.map(_.length).getOrElse(0))
+
   override def toString(): String = {
-    val name = s"Tensor2D[${implicitly[ClassTag[T]]}]"
-    s"$name:\n[" + data
+    val meta =
+      s"sizes: ${sizes.mkString("x")}, Tensor2D[${implicitly[ClassTag[T]]}]"
+    s"$meta:\n[" + data
       .map(a => a.mkString("[", ",", "]"))
-      .mkString("\n ") + "]"
+      .mkString("\n ") + "]\n"
   }
+}
+
+implicit class TensorOps[T: ClassTag: Numeric](val t: Tensor[T]) {
+  def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
 }
 
 object Tensor {
@@ -68,7 +77,7 @@ object Tensor {
       case (Tensor2D(data), Tensor1D(data2)) =>
         new Tensor2D[T](matMul[T](data, Array(data2)))
       case (Tensor1D(data), Tensor1D(data2)) =>
-        new Tensor2D[T](matMul[T](Array(data), Array(data2)))
+        new Tensor2D[T](matMul[T](Array(data), Array(data2))) //TODO: return 1D?
       case (Tensor2D(data), Tensor2D(data2)) =>
         new Tensor2D[T](matMul[T](data, data2))
     }
@@ -83,13 +92,13 @@ object Tensor {
       a: Array[Array[T]],
       b: Array[Array[T]]
   ): Array[Array[T]] = {
-    val cols = b.headOption.map(_.length).getOrElse(0)
     val rows = a.length
+    val cols = b.headOption.map(_.length).getOrElse(0)
     val res = Array.ofDim(rows, cols)
-    val numeric = implicitly[Numeric[T]]
+
     for (i <- (0 until rows).indices) {
       for (j <- (0 until cols).indices) {
-        var sum = numeric.zero
+        var sum = implicitly[Numeric[T]].zero
         for (k <- b.indices) {
           sum = sum + (a(i)(k) * b(k)(j))
         }
@@ -101,16 +110,16 @@ object Tensor {
 }
 
 sealed trait TrainedModel[T] {
-  def predict[T](x: Array[Array[T]]): Array[T]
+  def predict[T](x: Tensor[T]): Tensor[T]
 
-  def loss: Double
+  def loss: T
 }
 
 class SequentialTrainedModel[T](val data: Tensor[T]) extends TrainedModel[T] {
 
-  override def predict[T](x: Array[Array[T]]): Array[T] = ???
+  override def predict[T](x: Tensor[T]): Tensor[T] = ???
 
-  override def loss: Double = ???
+  override def loss: T = ???
 
   override def toString(): String = data.toString()
 }
@@ -119,8 +128,8 @@ trait RandomGen[T] {
   def gen: T
 }
 
-implicit val randomUniform = new RandomGen[Double] {
-  def gen: Double = math.random() + 0.001
+implicit val randomUniform = new RandomGen[Float] {
+  def gen: Float = math.random().toFloat + 0.001f
 }
 
 def random2D[T: ClassTag](rows: Int, cols: Int)(implicit
@@ -138,13 +147,18 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
     self.copy(layers = layers :+ l)
 
   def train(x: Tensor[T]): TrainedModel[T] = {
-    val initialWeights = layers.map(l => random2D(l.units, x.length))
-    val res = initialWeights.foldLeft(x) { case (acc, w) =>
-      println(s"w = $w")
-      println(s"acc = $acc")
-      Tensor.mul(w, acc)
+    val inputs = x.length
+    val (initialWeights, _) =
+      layers.foldLeft(List.empty[(Tensor[T], Activation[T])], inputs) {
+        case ((acc, inputs), l) =>
+          (acc :+ (random2D(l.units, inputs), l.f), l.units)
+      }
+    val res = initialWeights.foldLeft(x) { case (a, (w, activation)) =>
+      // println(s"w = $w")
+      // println(s"a = $a")
+      // println(s"res = ${w * a}")
+      Tensor.activate(w * a, activation) //TODO: add bias
     }
-
     new SequentialTrainedModel[T](res)
   }
 }
@@ -152,15 +166,9 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
 val ann =
   Sequential()
     .add(Dense(6)(relu))
-//.add(Dense(6)(relu))
-//.add(Dense(1)(sigmoid))
+    .add(Dense(6)(relu))
+    .add(Dense(1)(sigmoid))
 
-val x = Tensor2D(Array(Array(0.0), Array(1.0), Array(0.0), Array(1.0)))
+val x = Tensor2D(Array(Array(0.0f), Array(1.0f), Array(0.0f), Array(1.0f)))
 val model = ann.train(x)
-
-Tensor.mul(
-  Tensor2D(
-    Array(Array(9, 8, 7, 6), Array(6, 5, 4, 3), Array(3, 2, 1, 0))
-  ),
-  Tensor2D(Array(Array(1), Array(2), Array(3), Array(4)))
-)
+println(model)
