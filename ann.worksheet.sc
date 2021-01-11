@@ -25,7 +25,10 @@ case class Dense[T](units: Int = 1)(implicit val f: Activation[T])
 
 sealed trait Model[T] {
   def layers: List[Layer[T]]
-  def train(x: Tensor[T]): TrainedModel[T]
+  def train(x: Tensor[T]): Model[T]
+  def weights: List[Tensor[T]]
+  def predict[T](x: Tensor[T]): Tensor[T]
+  def loss: T
 }
 
 sealed trait Tensor[T] {
@@ -108,22 +111,6 @@ object Tensor {
     res
   }
 }
-
-sealed trait TrainedModel[T] {
-  def predict[T](x: Tensor[T]): Tensor[T]
-
-  def loss: T
-}
-
-class SequentialTrainedModel[T](val data: Tensor[T]) extends TrainedModel[T] {
-
-  override def predict[T](x: Tensor[T]): Tensor[T] = ???
-
-  override def loss: T = ???
-
-  override def toString(): String = data.toString()
-}
-
 trait RandomGen[T] {
   def gen: T
 }
@@ -140,26 +127,40 @@ def random2D[T: ClassTag](rows: Int, cols: Int)(implicit
 }
 
 case class Sequential[T: ClassTag: RandomGen: Numeric](
-    layers: List[Layer[T]] = Nil
+    layers: List[Layer[T]] = Nil,
+    var _weights: List[(Tensor[T], Activation[T])] = Nil
 ) extends Model[T] {
   self =>
+
+  def weights: List[Tensor[T]] = _weights.map(_._1)
+
+  def predict[T](x: Tensor[T]): Tensor[T] = ???
+
+  def loss: T = ???
+
   def add(l: Layer[T]) =
     self.copy(layers = layers :+ l)
 
-  def train(x: Tensor[T]): TrainedModel[T] = {
-    val inputs = x.length
+  def initialWeights(inputs: Int): List[(Tensor[T], Activation[T])] = {
     val (initialWeights, _) =
       layers.foldLeft(List.empty[(Tensor[T], Activation[T])], inputs) {
         case ((acc, inputs), l) =>
           (acc :+ (random2D(l.units, inputs), l.f), l.units)
       }
-    val res = initialWeights.foldLeft(x) { case (a, (w, activation)) =>
+
+    initialWeights
+  }
+
+  def train(x: Tensor[T]): Model[T] = {
+    val inputs = x.length
+    val weights = if (_weights == Nil) initialWeights(inputs) else _weights
+    val res = weights.foldLeft(x) { case (a, (w, activation)) =>
       // println(s"w = $w")
       // println(s"a = $a")
       // println(s"res = ${w * a}")
       Tensor.activate(w * a, activation) //TODO: add bias
     }
-    new SequentialTrainedModel[T](res)
+    Sequential[T](layers, weights)
   }
 }
 
@@ -171,4 +172,4 @@ val ann =
 
 val x = Tensor2D(Array(Array(0.0f), Array(1.0f), Array(0.0f), Array(1.0f)))
 val model = ann.train(x)
-println(model)
+println("weights:\n " + model.weights.mkString("\n"))
