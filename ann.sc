@@ -1,9 +1,11 @@
-import $file.tensors, tensors._
+import $file.tensors
+import Model.{batches, getAvgLoss}
+import tensors._
 
-import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
+import scala.reflect.ClassTag
 
-sealed trait Activation[T] extends Function1[T, T] {
+sealed trait Activation[T] extends (T => T) {
   def apply(x: T): T //TODO: change input & output param to Tensor[T]
 }
 
@@ -132,11 +134,18 @@ def random2D[T: ClassTag](rows: Int, cols: Int)(implicit
   Tensor2D(Array.fill(rows)(Array.fill[T](cols)(rnd.gen)))
 }
 
+object Model {
+  def batches[T](x: Tensor2D[T], batchSize: Int) = x.data.grouped(batchSize)
+
+  def getAvgLoss[T: Numeric](losses: List[T]) =
+    implicitly[Numeric[T]].toFloat(losses.sum) / losses.length
+}
+
 case class Sequential[T: ClassTag: RandomGen: Numeric](
     lossFunc: Loss[T],
     optimizer: Optimizer[T],
     learningRate: T,
-    batchSize: Int = 32,
+    batchSize: Int = 1,
     layers: List[Layer[T]] = Nil,
     weights: List[(Tensor[T], Activation[T])] = Nil
 ) extends Model[T] {
@@ -144,7 +153,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
 
   def currentWeights: List[Tensor[T]] = weights.map(_._1)
 
-  def predict(x: Tensor[T]): Tensor[T] = _predict(x, weights)
+  def predict(x: Tensor[T]): Tensor[T] = activate(x, weights)
 
   def loss: Tensor[T] = ???
 
@@ -160,53 +169,60 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
     weights
   }
 
-  private def _predict(
+  private def activate(
       x: Tensor[T],
       weights: List[(Tensor[T], Activation[T])]
   ): Tensor[T] =
     weights.foldLeft(x) { case (a, (w, activation)) =>
-      // println(s"w = $w")
-      // println(s"a = $a")
+      println(s"w = $w")
+      println(s"a = $a")
       println(s"res = ${w * a}")
       (w * a).activate(activation) //TODO: add bias, i.e. w * a + b
     }
 
-  def train(x: Tensor2D[T], y: Tensor1D[T], epocs: Int): Model[T] = {
+  def train(x: Tensor2D[T], y: Tensor1D[T], epochs: Int): Model[T] = {
     val inputs = x.cols
-    val _weights = if (weights == Nil) initialWeights(inputs) else weights
-
     val (updatedWeights, epochLosses) =
-      (0 until epocs).foldLeft(_weights, List.empty[T]) {
+      (0 until epochs).foldLeft(getWeights(inputs), List.empty[T]) {
         case ((weights, losses), epoch) =>
-          val batches = x.data.grouped(batchSize)
+          val epochRes = batches(x, batchSize).foldLeft(weights, losses) {
+            case ((weights, losses), batch) =>
+              val predicted = batch
+                .map(row => activate(Tensor1D(row), weights))
+                .combineAllAs1D
+              val loss = lossFunc(y, predicted)
+              // back-propagation
+              val newWeights =
+                weights.foldLeft(List.empty[(Tensor[T], Activation[T])]) {
+                  case (acc, (w, activation)) =>
+                    val gradient = lossFunc.derivative(y, predicted)
+                    val newWeight =
+                      w - learningRate * gradient //TODO: multiply by  activation value on wi
+                    println(s"newWeight:\n$newWeight")
+                    acc :+ (newWeight -> activation)
+                }
 
-          batches.foldLeft(weights, losses) { case ((weights, losses), batch) =>
-            val predicted = batch
-              .map(row => _predict(Tensor1D(row), weights))
-              .combineAllAs1D
-            val loss = lossFunc(y, predicted)
-            val newWeights =
-              weights.foldLeft(List.empty[(Tensor[T], Activation[T])]) {
-                case (acc, (w, activation)) =>
-                  val gradient =
-                    lossFunc.derivative(y, predicted)
-                  val newWeight = w - learningRate * gradient
-                  acc :+ (newWeight -> activation)
-              }
-            (newWeights, losses :+ loss)
+              (newWeights, losses :+ loss)
           }
+
+          println(s"epoch: $epoch, avg loss: ${getAvgLoss(epochRes._2)}")
+          epochRes
       }
     println(s"losses count: ${epochLosses.length}")
     println(s"losses: ${epochLosses.mkString(",")}")
+
     copy(weights = updatedWeights)
   }
+
+  private def getWeights(inputs: Int) =
+    if (weights == Nil) initialWeights(inputs) else weights
 }
 
 val ann =
-  Sequential(mse, stochasticGradientDescent, 0.00001f, 32)
+  Sequential(mse, stochasticGradientDescent, learningRate = 0.00001f, 32)
     .add(Dense(6)(relu))
     .add(Dense(6)(relu))
-    .add(Dense(1)(sigmoid))
+    .add(Dense()(sigmoid))
 
 val x = Tensor2D(
   Array(0.2f, 0.3f, 0.4f, 0.5f),

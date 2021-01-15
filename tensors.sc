@@ -12,7 +12,7 @@ case class Tensor0D[T: ClassTag](data: T) extends Tensor[T] {
   type A = T
   override def length: Int = 0
   override def sizes: List[Int] = Nil
-  override def toString(): String = {
+  override def toString: String = {
     val meta = s"sizes: ${sizes.head}, Tensor0D[${implicitly[ClassTag[T]]}]"
     s"$meta:\n" + data + "\n"
   }
@@ -23,7 +23,7 @@ case class Tensor1D[T: ClassTag](data: Array[T]) extends Tensor[T] {
 
   override def sizes: List[Int] = List(data.length)
 
-  override def toString(): String = {
+  override def toString: String = {
     val meta = s"sizes: ${sizes.head}, Tensor1D[${implicitly[ClassTag[T]]}]"
     s"$meta:\n[" + data.mkString(",") + "]\n"
   }
@@ -43,7 +43,7 @@ case class Tensor2D[T: ClassTag](data: Array[Array[T]]) extends Tensor[T] {
   private def _sizes: (Int, Int) =
     (data.length, data.headOption.map(_.length).getOrElse(0))
 
-  override def toString(): String = {
+  override def toString: String = {
     val meta =
       s"sizes: ${sizes.mkString("x")}, Tensor2D[${implicitly[ClassTag[T]]}]"
     s"$meta:\n[" + data
@@ -78,10 +78,10 @@ implicit class TensorOps2[T: ClassTag: Numeric](val t: Array[Tensor[T]]) {
 
 object Tensor {
   def of[T: ClassTag](size: Int): Tensor1D[T] =
-    Tensor1D[T](Array.ofDim(size))
+    Tensor1D[T](Array.ofDim[T](size))
 
   def of[T: ClassTag](size: Int, size2: Int): Tensor2D[T] =
-    Tensor2D[T](Array.fill(size)(of(size2).data))
+    Tensor2D[T](Array.fill(size)(of[T](size2).data))
 
   def substract[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match {
@@ -134,7 +134,7 @@ object Tensor {
   ): Array[Array[T]] = {
     val rows = a.length
     val cols = b.headOption.map(_.length).getOrElse(0)
-    val res = Array.ofDim(rows, cols)
+    val res = Array.ofDim[T](rows, cols)
 
     for (i <- (0 until rows).indices) {
       for (j <- (0 until cols).indices) {
@@ -155,16 +155,16 @@ object Tensor {
     Tensor1D(a.data ++ b.data)
 
   def combineAllAs1D[T: ClassTag](ts: Iterable[Tensor[T]]): Tensor1D[T] =
-    ts.foldLeft(Tensor1D()) { case (a, b) => combineAs1D(a, b) }
+    ts.foldLeft(Tensor1D[T]()) { case (a, b) => combineAs1D[T](a, b) }
 
   def combineAs1D[T: ClassTag](a: Tensor[T], b: Tensor[T]): Tensor1D[T] =
     (a, b) match {
-      case (t1 @ Tensor1D(data), t2 @ Tensor1D(data2)) => combine(t1, t2)
-      case (t1 @ Tensor1D(data), t2 @ Tensor2D(data2)) =>
+      case (t1 @ Tensor1D(_), t2 @ Tensor1D(_)) => combine(t1, t2)
+      case (t1 @ Tensor1D(_), Tensor2D(data2)) =>
         combine(t1, Tensor1D(data2.flatten))
-      case (t1 @ Tensor2D(data), t2 @ Tensor1D(data2)) =>
+      case (Tensor2D(data), t2 @ Tensor1D(_)) =>
         combine(Tensor1D(data.flatten), t2)
-      case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>
+      case (Tensor2D(data), Tensor2D(data2)) =>
         combine(Tensor1D(data.flatten), Tensor1D(data2.flatten))
     }
 }
