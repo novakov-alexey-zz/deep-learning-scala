@@ -1,5 +1,7 @@
-import scala.reflect.ClassTag
+// scala 2.13.3
+
 import scala.math.Numeric.Implicits._
+import scala.reflect.ClassTag
 
 sealed trait Tensor[T] {
   type A
@@ -59,11 +61,46 @@ case class Tensor2D[T: ClassTag](data: Array[Array[T]]) extends Tensor[T] {
 object Tensor2D {
   def apply[T: ClassTag](rows: Array[T]*): Tensor2D[T] =
     Tensor2D[T](rows.toArray)
+
+  def col[T: ClassTag](data: Array[Array[T]], i: Int): Array[T] = {
+    val to = i + 1
+    slice(data, None, Some(i, to)).flatMap(_.headOption)
+  }
+
+  def slice[T: ClassTag](
+      data: Array[Array[T]],
+      rows: Option[(Int, Int)] = None,
+      cols: Option[(Int, Int)] = None
+  ): Array[Array[T]] =
+    (rows, cols) match {
+      case (Some((rowsFrom, rowsTo)), Some((colsFrom, colsTo))) =>
+        sliceArr(data, (rowsFrom, rowsTo)).map(a =>
+          sliceArr(a, (colsFrom, colsTo))
+        )
+      case (None, Some((colsFrom, colsTo))) =>
+        data.map(a => sliceArr(a, (colsFrom, colsTo)))
+      case (Some((rowsFrom, rowsTo)), None) =>
+        sliceArr(data, (rowsFrom, rowsTo))
+      case _ => data
+    }
+
+  def sliceArr[T](
+      data: Array[T],
+      range: (Int, Int)
+  ): Array[T] = {
+    // println(s"range: $range")
+    val (l, r) = range
+    val from = if (l < 0) data.length + l else l
+    val to = if (r < 0) data.length + r else if (r == 0) data.length else r
+
+    // println(s"from = $from, to = $to")    
+    data.slice(from, to)
+  }
 }
 
 implicit class TensorOps[T: ClassTag: Numeric](val t: Tensor[T]) {
   def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
-  def activate(f: T => T) = Tensor.activate(t, f)
+  def map(f: T => T) = Tensor.map(t, f)
   def -(that: T): Tensor[T] = Tensor.substract(t, Tensor0D(that))
 }
 
@@ -72,8 +109,12 @@ implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T) {
   def -(that: Tensor[T]): Tensor[T] = Tensor.substract(Tensor0D(t), that)
 }
 
-implicit class TensorOps2[T: ClassTag: Numeric](val t: Array[Tensor[T]]) {
-  def combineAllAs1D = Tensor.combineAllAs1D(t)
+implicit class TensorListOps[T: ClassTag: Numeric](val t: Array[Tensor[T]]) {
+  def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)
+}
+
+implicit class Tensor2DOps[T: ClassTag](val t: Tensor2D[T]) {
+  def col(i: Int): Tensor1D[T] = Tensor1D(Tensor2D.col(t.data, i))
 }
 
 object Tensor {
@@ -112,7 +153,7 @@ object Tensor {
 
   private def asColumn[T: ClassTag](a: Array[T]) = a.map(Array(_))
 
-  def activate[T: ClassTag](t: Tensor[T], f: T => T): Tensor[T] =
+  def map[T: ClassTag](t: Tensor[T], f: T => T): Tensor[T] =
     t match {
       case Tensor1D(data) => Tensor1D(data.map(f(_)))
       case Tensor2D(data) => Tensor2D(data.map(d => d.map(f(_))))

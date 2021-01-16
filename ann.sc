@@ -1,7 +1,17 @@
-import $file.tensors
-import Model.{batches, getAvgLoss}
-import tensors._
+// scala 2.13.3
 
+import $file.loader
+import $file.tensor
+import $file.encoders
+import $file.converter
+
+import Model.{batches, getAvgLoss}
+import loader._
+import tensor._
+import encoders._
+import converter._
+
+import java.nio.file.Path
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
 
@@ -37,7 +47,7 @@ implicit val mse = new Loss[Float] {
   override def apply(
       actual: Tensor1D[Float],
       predicted: Tensor1D[Float]
-  ): Float = {
+  ): Float = {    
     var sumScore = 0.0
     for (i <- actual.data.indices) {
       val y1 = actual.data(i)
@@ -51,7 +61,7 @@ implicit val mse = new Loss[Float] {
   override def derivative(
       actual: Tensor1D[Float],
       predicted: Tensor1D[Float]
-  ): Float = {
+  ): Float = {    
     var sumScore = 0.0
     for (i <- actual.data.indices) {
       val y1 = actual.data(i)
@@ -135,7 +145,11 @@ def random2D[T: ClassTag](rows: Int, cols: Int)(implicit
 }
 
 object Model {
-  def batches[T](x: Tensor2D[T], batchSize: Int) = x.data.grouped(batchSize)
+  def batches[T](t: Tensor2D[T], batchSize: Int): Iterator[Array[Array[T]]] =
+     t.data.grouped(batchSize)
+
+  def batches[T](t: Tensor1D[T], batchSize: Int): Iterator[Array[T]] =
+     t.data.grouped(batchSize)
 
   def getAvgLoss[T: Numeric](losses: List[T]) =
     implicitly[Numeric[T]].toFloat(losses.sum) / losses.length
@@ -174,37 +188,41 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
       weights: List[(Tensor[T], Activation[T])]
   ): Tensor[T] =
     weights.foldLeft(x) { case (a, (w, activation)) =>
-      println(s"w = $w")
-      println(s"a = $a")
-      println(s"res = ${w * a}")
-      (w * a).activate(activation) //TODO: add bias, i.e. w * a + b
+      // println(s"w = $w")
+      // println(s"a = $a")
+      // println(s"res = ${w * a}")
+      (w * a).map(activation) //TODO: add bias, i.e. w * a + b
     }
+
+  def updateWeights(weights: List[(Tensor[T], Activation[T])], actual: Tensor1D[T], predicted: Tensor1D[T]) = 
+    weights.foldLeft(List.empty[(Tensor[T], Activation[T])]) {
+      case (acc, (w, activation)) =>
+        val gradient = lossFunc.derivative(actual, predicted)
+        val newWeight =
+          w - learningRate * gradient //TODO: multiply by activation value on wi
+        // println(s"newWeight:\n$newWeight")
+        acc :+ (newWeight -> activation)
+    }
+  
 
   def train(x: Tensor2D[T], y: Tensor1D[T], epochs: Int): Model[T] = {
     val inputs = x.cols
+    lazy val actualBatches = batches(y, batchSize).toArray
+    lazy val xBatches = batches(x, batchSize).zip(actualBatches)
+    
     val (updatedWeights, epochLosses) =
       (0 until epochs).foldLeft(getWeights(inputs), List.empty[T]) {
-        case ((weights, losses), epoch) =>
-          val epochRes = batches(x, batchSize).foldLeft(weights, losses) {
-            case ((weights, losses), batch) =>
+        case ((weights, losses), epoch) =>        
+          val epochRes = xBatches.foldLeft(weights, losses) {
+            case ((weights, losses), (batch, actualBatch)) =>
               val predicted = batch
                 .map(row => activate(Tensor1D(row), weights))
-                .combineAllAs1D
-              val loss = lossFunc(y, predicted)
-              // back-propagation
-              val newWeights =
-                weights.foldLeft(List.empty[(Tensor[T], Activation[T])]) {
-                  case (acc, (w, activation)) =>
-                    val gradient = lossFunc.derivative(y, predicted)
-                    val newWeight =
-                      w - learningRate * gradient //TODO: multiply by  activation value on wi
-                    println(s"newWeight:\n$newWeight")
-                    acc :+ (newWeight -> activation)
-                }
-
-              (newWeights, losses :+ loss)
+                .combineAllAs1D              
+              val actual = Tensor1D(actualBatch)
+              val loss = lossFunc(actual, predicted)              
+              val updated = updateWeights(weights, actual, predicted)                
+              (updated, losses :+ loss)
           }
-
           println(s"epoch: $epoch, avg loss: ${getAvgLoss(epochRes._2)}")
           epochRes
       }
@@ -224,11 +242,27 @@ val ann =
     .add(Dense(6)(relu))
     .add(Dense()(sigmoid))
 
-val x = Tensor2D(
-  Array(0.2f, 0.3f, 0.4f, 0.5f),
-  Array(0.1f, 0.1f, 0.4f, 0.2f)
-)
-val y = Tensor1D(0.8f, 0.3f)
+//1,15634602,Hargrave,619,France,Female,42,2,0,1,1,1,101348.88,1 = length 14
+val data = TextLoader(Path.of("data", "Churn_Modelling.csv")).load()
+val y = data.col[Float](-1)
+// println(y.data.mkString(", "))
 
-val model = ann.train(x, y, 1)
-//println("weights:\n " + model.currentWeights.mkString("\n"))
+var x = data.cols[String]((3, -1))
+// println(x.data.head.mkString(","))
+val encoder = LabelEncoder[String]().fit(x.col(2))
+x = encoder.transform(x, 2)
+val hotEncoder = OneHotEncoder[String, Float]().fit(x.col(1))
+// println(hotEncoder.classes)
+x = hotEncoder.transform(x, 1)
+val xFloat = transform[Float](x.data)
+// println(xFloat.data.head.mkString(","))
+
+//val x = Tensor2D(
+//  Array(0.2f, 0.3f, 0.4f, 0.5f),
+//  Array(0.1f, 0.1f, 0.4f, 0.2f)
+//)
+//val y = Tensor1D(0.8f, 0.3f)
+
+val model = ann.train(xFloat, y, 100)
+println("weights:\n " + model.currentWeights.mkString("\n"))
+// print(x.data.map(_.mkString(", ")).mkString("\n"))
