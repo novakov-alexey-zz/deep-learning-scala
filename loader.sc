@@ -1,4 +1,5 @@
 // scala 2.13.3
+
 import $file.tensor
 import $file.converter
 
@@ -21,7 +22,7 @@ case class TextLoader(
 
   def load(): TextLoader = copy(
     data = Using.resource(Source.fromFile(path.toFile)) { s =>
-      val lines = s.getLines()
+      val lines = s.getLines().take(10) // TODO remove this take(10)
       (if (header && lines.nonEmpty) lines.toArray.tail else lines.toArray)
         .map(_.split(delimiter))
     }

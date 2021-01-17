@@ -39,10 +39,12 @@ object Tensor1D {
 case class Tensor2D[T: ClassTag](data: Array[Array[T]]) extends Tensor[T] {
   type A = Array[Array[T]]
 
-  override def sizes: List[Int] =
-    List(_sizes._1, _sizes._2)
+  override def sizes: List[Int] = {
+    val (r, c) = sizes2D
+    List(r, c)
+  }
 
-  private def _sizes: (Int, Int) =
+  def sizes2D: (Int, Int) =
     (data.length, data.headOption.map(_.length).getOrElse(0))
 
   override def toString: String = {
@@ -53,7 +55,7 @@ case class Tensor2D[T: ClassTag](data: Array[Array[T]]) extends Tensor[T] {
       .mkString("\n ") + "]\n"
   }
 
-  def cols: Int = _sizes._2
+  def cols: Int = sizes2D._2
 
   override def length: Int = data.length
 }
@@ -88,12 +90,9 @@ object Tensor2D {
       data: Array[T],
       range: (Int, Int)
   ): Array[T] = {
-    // println(s"range: $range")
     val (l, r) = range
     val from = if (l < 0) data.length + l else l
     val to = if (r < 0) data.length + r else if (r == 0) data.length else r
-
-    // println(s"from = $from, to = $to")    
     data.slice(from, to)
   }
 }
@@ -102,6 +101,9 @@ implicit class TensorOps[T: ClassTag: Numeric](val t: Tensor[T]) {
   def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
   def map(f: T => T) = Tensor.map(t, f)
   def -(that: T): Tensor[T] = Tensor.substract(t, Tensor0D(that))
+  def -(that: Tensor[T]): Tensor[T] = Tensor.substract(t, that)
+  def +(that: Tensor[T]): Tensor[T] = Tensor.plus(t, that)
+  def as1D: Tensor1D[T] = Tensor.as1D(t)
 }
 
 implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T) {
@@ -109,7 +111,11 @@ implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T) {
   def -(that: Tensor[T]): Tensor[T] = Tensor.substract(Tensor0D(t), that)
 }
 
-implicit class TensorListOps[T: ClassTag: Numeric](val t: Array[Tensor[T]]) {
+implicit class TensorArrayOps[T: ClassTag: Numeric](val t: Array[Tensor[T]]) {
+  def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)
+}
+
+implicit class TensorListOps[T: ClassTag: Numeric](val t: List[Tensor[T]]) {
   def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)
 }
 
@@ -127,11 +133,45 @@ object Tensor {
   def substract[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match {
       case (Tensor1D(data), Tensor1D(data2)) =>
-        Tensor1D(data.flatMap(d => data2.map(d2 => d - d2)))
+        val res = data.zip(data2).map { case (a, b) => a - b }
+        Tensor1D(res)
       case (Tensor2D(data), Tensor0D(data2)) =>
-        Tensor2D(data.map(_.map(_ - data2)))
+        Tensor2D(data.map(_.map(_ - data2))) //TODO: test this case
       case (Tensor1D(data), Tensor0D(data2)) =>
         Tensor1D(data.map(_ - data2))
+      case (t1 @ Tensor2D(data), Tensor1D(data2)) => 
+        val cols = t1.cols
+        assert(cols == data2.length, s"trailing axis must have the same size, $cols != ${data2.length}")
+        val res = data.map(_.zip(data2).map { case (a, b) => a - b})
+        Tensor2D(res) 
+      case (t1, t2) => sys.error(s"Not implemented for $t1 x $t2")
+    }
+
+  def plus[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
+    (a, b) match {
+      case (Tensor1D(data), Tensor1D(data2)) =>        
+        Tensor1D(data.zip(data2).map { case (a, b) => a + b })
+      case (Tensor2D(data), Tensor0D(data2)) =>
+        Tensor2D(data.map(_.map(_ + data2)))
+      case (t1 @ Tensor2D(data), t2 @ Tensor1D(data2)) =>
+        val (rows, cols) = t1.sizes2D
+        assert(
+          cols == 1,
+          s"tensors must be have the same column length to sum them up, but were: $cols != 1"
+        )
+        assert(
+          rows == t2.length,
+          s"tensors must be have the same rows length to sum them up, but were: $rows != ${t2.length}"
+        )
+        val sum = Array.ofDim[T](rows, cols)
+        for (i <- data.indices) {
+          sum(i)(0) = data(i)(0) + data2(i)
+        }
+        Tensor2D(sum)
+      case (Tensor1D(data), Tensor0D(data2)) =>
+        Tensor1D(data.map(_ + data2))
+      case (Tensor0D(data), Tensor1D(data2)) =>
+        Tensor1D(data2.map(_ + data))
       case _ => sys.error("Not implemented!")
     }
 
@@ -207,5 +247,11 @@ object Tensor {
         combine(Tensor1D(data.flatten), t2)
       case (Tensor2D(data), Tensor2D(data2)) =>
         combine(Tensor1D(data.flatten), Tensor1D(data2.flatten))
+    }
+
+  def as1D[T: ClassTag](t: Tensor[T]): Tensor1D[T] =
+    t match {
+      case t1 @ Tensor1D(data) => t1
+      case Tensor2D(data)      => Tensor1D(data.flatten)
     }
 }
