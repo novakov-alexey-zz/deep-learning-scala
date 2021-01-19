@@ -104,6 +104,8 @@ implicit class TensorOps[T: ClassTag: Numeric](val t: Tensor[T]) {
   def -(that: Tensor[T]): Tensor[T] = Tensor.substract(t, that)
   def +(that: Tensor[T]): Tensor[T] = Tensor.plus(t, that)
   def as1D: Tensor1D[T] = Tensor.as1D(t)
+  def sum: T = Tensor.sum(t)
+  def T: Tensor[T] = Tensor.transpose(t)
 }
 
 implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T) {
@@ -139,17 +141,20 @@ object Tensor {
         Tensor2D(data.map(_.map(_ - data2))) //TODO: test this case
       case (Tensor1D(data), Tensor0D(data2)) =>
         Tensor1D(data.map(_ - data2))
-      case (t1 @ Tensor2D(data), Tensor1D(data2)) => 
+      case (t1 @ Tensor2D(data), Tensor1D(data2)) =>
         val cols = t1.cols
-        assert(cols == data2.length, s"trailing axis must have the same size, $cols != ${data2.length}")
-        val res = data.map(_.zip(data2).map { case (a, b) => a - b})
-        Tensor2D(res) 
+        assert(
+          cols == data2.length,
+          s"trailing axis must have the same size, $cols != ${data2.length}"
+        )
+        val res = data.map(_.zip(data2).map { case (a, b) => a - b })
+        Tensor2D(res)
       case (t1, t2) => sys.error(s"Not implemented for $t1 x $t2")
     }
 
   def plus[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match {
-      case (Tensor1D(data), Tensor1D(data2)) =>        
+      case (Tensor1D(data), Tensor1D(data2)) =>
         Tensor1D(data.zip(data2).map { case (a, b) => a + b })
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ + data2)))
@@ -168,11 +173,19 @@ object Tensor {
           sum(i)(0) = data(i)(0) + data2(i)
         }
         Tensor2D(sum)
+      case (t1 @ Tensor1D(data), t2 @ Tensor2D(data2)) =>
+        assert(
+          data.length == t2.length,
+          s"t1 vector lenght must be equal to number of rows in t2, ${data.length} != ${t2.length}"
+        )
+        Tensor1D(data.zipWithIndex.map { case (d, i) =>
+          d + data2(i).sum
+        })
       case (Tensor1D(data), Tensor0D(data2)) =>
         Tensor1D(data.map(_ + data2))
       case (Tensor0D(data), Tensor1D(data2)) =>
         Tensor1D(data2.map(_ + data))
-      case _ => sys.error("Not implemented!")
+      case _ => sys.error(s"Not implemented for:\n$a\nand\n$b!")
     }
 
   def mul[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
@@ -187,7 +200,8 @@ object Tensor {
         Tensor2D[T](matMul[T](data, asColumn(data2)))
       case (Tensor1D(data), Tensor1D(data2)) =>
         Tensor1D[T](matMul[T](asColumn(data), Array(data2)).head)
-      case (Tensor2D(data), Tensor2D(data2)) =>
+      case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>
+        assert(t1.cols == t2.length, "The number of columns in the first matrix should be equal to the number of rows in the second")
         Tensor2D[T](matMul[T](data, data2))
     }
 
@@ -254,4 +268,27 @@ object Tensor {
       case t1 @ Tensor1D(data) => t1
       case Tensor2D(data)      => Tensor1D(data.flatten)
     }
+
+  def sum[T: Numeric: ClassTag](t: Tensor[T]): T =
+    t match {
+      case Tensor0D(data) => data
+      case Tensor1D(data) => data.sum
+      case Tensor2D(data) => data.map(_.sum).sum
+    }
+
+  def transpose[T: ClassTag](t: Tensor[T]): Tensor[T] =
+    t match {
+      case t2 @ Tensor2D(data) =>
+        val (rows, cols) = t2.sizes2D
+        val transposed = Array.ofDim[T](cols, rows)
+
+        for (i <- (0 until rows).indices) {
+          for (j <- (0 until cols).indices) {
+            transposed(j)(i) = data(i)(j)
+          }
+        }
+        Tensor2D(transposed)
+      case _ => t
+    }
+
 }

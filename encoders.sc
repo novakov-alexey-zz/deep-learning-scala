@@ -20,7 +20,7 @@ object Encoder {
   def transformAny[A: TypeTag, B: TypeTag](a: A): B =
     (typeOf[A], typeOf[B]) match {
       case (t1, t2) if t1 =:= typeOf[Float] && t2 =:= typeOf[String] =>
-        a.toString().asInstanceOf[B]
+        a.toString.asInstanceOf[B]
       case (t1, t2) if t1 =:= typeOf[String] && t2 =:= typeOf[Float] =>
         a.toString.toFloat.asInstanceOf[B]
     }

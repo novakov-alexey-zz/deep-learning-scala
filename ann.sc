@@ -1,8 +1,8 @@
 // scala 2.13.3
 
+import $file.encoders
 import $file.loader
 import $file.tensor
-import $file.encoders
 import $file.converter
 
 import Model.{batches, getAvgLoss}
@@ -14,7 +14,6 @@ import converter._
 import java.nio.file.Path
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
-import scala.util.Random
 
 sealed trait Activation[T] extends (T => T) {
   def apply(x: T): T //TODO: change input & output param to Tensor[T]
@@ -64,7 +63,12 @@ implicit val mse = new Loss[Float] {
       samples: Int,
       x: Tensor[Float],
       error: Tensor[Float]
-  ): Tensor[Float] = 1f / samples * (x * error)
+  ): Tensor[Float] = {
+    println(s"samples = $samples")
+    println(s"x = ${x}")
+    println(s"error = $error")
+    1f / samples * (x * error)
+  }
 }
 
 // implicit val binaryCrossEntropy = new Loss[Float] {
@@ -103,7 +107,7 @@ implicit val adam = new Optimizer[Float] {
   override def apply(t: Tensor2D[Float]): Tensor2D[Float] = ???
 }
 
-implicit val stochasticGradientDescent = new Optimizer[Float] {
+implicit val miniBatchGradientDescent = new Optimizer[Float] {
   //TODO: move initial algorithm here
   override def apply(t: Tensor2D[Float]): Tensor2D[Float] = ???
 }
@@ -201,13 +205,14 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
       weights: List[Weight[T]]
   ): Array[Neuron[T]] =
     weights
-      .foldLeft(input, Array.empty[Neuron[T]]) {
+      .foldLeft(input.T, Array.empty[Neuron[T]]) {
         case ((x, acc), (w, b, activation)) =>
-          // println(s"w = $w")
-          // println(s"a = $a")
-          // println(s"res = ${w * a}")
-          //println(s"res2 = ${w * a + b}")
-          val z = w * x + b
+          println(s"w = $w")
+          println(s"x = ${x}")
+          println(s"b = $b")
+          println(s"res = ${w * x}")
+          // println(s"res2 = ${b + (w * x)}")
+          val z = (w * x)
           val a = z.map(activation)
           (a, acc :+ Neuron(x, z, a))
       }
@@ -215,17 +220,21 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
 
   def updateWeights(
       weights: List[Weight[T]],
-      activations: Array[Array[Neuron[T]]],
+      activations: Array[Neuron[T]],
       error: Tensor[T]
   ) = {
     println(s"weights.size = ${weights.length}")
+    println(s"activations.size = ${activations.length}")
     val zero = implicitly[Numeric[T]].zero
-    def batchGradient(layer: Int): Tensor[T] =
+
+    def batchGradient(layer: Int): T =
       activations
-        .foldLeft(Tensor0D(zero): Tensor[T]) { case (acc, layers) =>
-          val itemGradient =
-            lossFunc.gradient(activations.length, layers(layer).x, error)
-          itemGradient + acc
+        .foldLeft(zero) { case (acc, layers) =>
+          // println(s"layers.size = ${layers.length}, layer = $layer")
+          // println(s"xi = ${layers(layer).x}")
+          val gradient =
+            lossFunc.gradient(activations.length, layers.x, error).sum
+          gradient + acc
         }
 
     weights.zipWithIndex.foldLeft(List.empty[Weight[T]]) {
@@ -251,11 +260,11 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
           val epochRes = xBatches.foldLeft(weights, losses) { // mini-batch SGD
             case ((weights, losses), (batch, actualBatch)) =>
               // forward
-              println(s"batch size = ${batch.length}")
-              val activations =
-                batch.map(row => activate(Tensor1D(row), weights))
+              println(s"batch size = ${batch.length}")              
+              val activations = activate(Tensor2D(batch), weights)
+              println(s"activations = ${activations.mkString("\n---------\n")}")
               val actual = Tensor1D(actualBatch)
-              val predicted = activations.map(_.last.a).combineAllAs1D
+              val predicted = activations.last.a.as1D
               println(s"predicted = $predicted")
               println(s"actual = $actual")
               val error = predicted - actual
@@ -280,7 +289,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
 }
 
 val ann =
-  Sequential(mse, stochasticGradientDescent, learningRate = 0.0001f, 32)
+  Sequential(mse, miniBatchGradientDescent, learningRate = 0.0001f, 32)
     .add(Dense(6)(relu))
     .add(Dense(6)(relu))
     .add(Dense()(sigmoid))
