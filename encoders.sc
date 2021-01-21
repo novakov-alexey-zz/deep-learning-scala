@@ -21,8 +21,16 @@ object Encoder {
     (typeOf[A], typeOf[B]) match {
       case (t1, t2) if t1 =:= typeOf[Float] && t2 =:= typeOf[String] =>
         a.toString.asInstanceOf[B]
+      case (t1, t2) if t1 =:= typeOf[Double] && t2 =:= typeOf[String] =>
+        a.toString.asInstanceOf[B]
       case (t1, t2) if t1 =:= typeOf[String] && t2 =:= typeOf[Float] =>
         a.toString.toFloat.asInstanceOf[B]
+      case (t1, t2) if t1 =:= typeOf[String] && t2 =:= typeOf[Double] =>
+        a.toString.toDouble.asInstanceOf[B]
+      case (t1, t2) if t1 =:= typeOf[Float] && t2 =:= typeOf[Double] =>
+        a.asInstanceOf[Float].toDouble.asInstanceOf[B]
+      case (t1, t2) if t1 =:= typeOf[Double] && t2 =:= typeOf[Float] =>
+        a.asInstanceOf[Double].toFloat.asInstanceOf[B]
     }
 
   def toClasses[T: TypeTag: Ordering, U: TypeTag](
@@ -79,4 +87,57 @@ case class OneHotEncoder[
     }
     Tensor2D(data)
   }
+}
+
+case class Stats(mean: Double, stdDev: Double)
+case class StandardScaler[T: Numeric: TypeTag: ClassTag](
+    stats: Array[Stats] = Array.empty
+) {
+
+  def fit(samples: Tensor[T]): StandardScaler[T] = {
+    samples match {
+      case Tensor1D(data) =>
+        StandardScaler(Array(fitColumn(data)))
+      case t @ Tensor2D(data) =>
+        StandardScaler(t.T.asInstanceOf[Tensor2D[T]].data.map(fitColumn))
+      case t @ Tensor1D(d) => StandardScaler()
+    }
+  }
+
+  private def fitColumn(data: Array[T]) = {
+    val nums = data.map(transformAny[T, Double])
+    val mean = nums.sum / data.length
+    val stdDev = math.sqrt(
+      nums.map(n => math.pow(n - mean, 2)).sum / (data.length - 1)
+    )
+    Stats(mean, stdDev)
+  }
+
+  def transform(t: Tensor[T]): Tensor[T] = {
+    t match {
+      case Tensor1D(data) =>
+        val stat = stats(0)
+        val res = data.map(n =>
+          transformAny[Double, T](scale(transformAny[T, Double](n), stat))
+        )
+        Tensor1D(res)
+      case t2 @ Tensor2D(data) =>
+        val (rows, cols) = t2.sizes2D
+        val res = Array.ofDim[T](rows, cols)
+
+        for (i <- (0 until rows)) {
+          for (j <- (0 until cols)) {
+            val stat = stats(j)
+            val n = transformAny[T, Double](data(i)(j))
+            res(i)(j) = transformAny[Double, T](scale(n, stat))
+          }
+        }
+
+        Tensor2D(res)
+      case Tensor1D(_) => t
+    }
+  }
+
+  private def scale(n: Double, stat: Stats): Double =
+    (n - stat.mean) / stat.stdDev
 }

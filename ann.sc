@@ -65,9 +65,9 @@ implicit val mse = new Loss[Float] {
       x: Tensor[Float],
       error: Tensor[Float]
   ): (Tensor[Float], Tensor[Float]) = {
-    println(s"samples = ${error.length}")
-    println(s"x = ${x}")
-    println(s"error = $error")
+    // println(s"samples = ${error.length}")
+    // println(s"x = ${x}")
+    // println(s"error = $error")
     val weightGradient = 1f / error.length * (x * error)
     val biasGradient = 1f / error.length * error
     weightGradient -> biasGradient
@@ -125,7 +125,7 @@ case class Dense[T](units: Int = 1)(implicit val f: Activation[T])
 sealed trait Model[T] {
   def layers: List[Layer[T]]
   def train(x: Tensor2D[T], y: Tensor1D[T], epocs: Int): Model[T]
-  def currentWeights: List[Tensor[T]]
+  def currentWeights: List[(Tensor[T], Tensor[T])]
   def predict(x: Tensor[T]): Tensor[T]
   def loss: Tensor[T]
 }
@@ -164,7 +164,7 @@ object Model {
     implicitly[Numeric[T]].toFloat(losses.sum) / losses.length
 }
 
-type Weight[T] = (Tensor[T], Tensor[T], Activation[T])
+case class Weight[T](w: Tensor[T], b: Tensor[T], f: Activation[T])
 
 /*
  * z - before activation = w * x
@@ -182,7 +182,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
 ) extends Model[T] {
   self =>
 
-  def currentWeights: List[Tensor[T]] = weights.map(_._1)
+  def currentWeights: List[(Tensor[T], Tensor[T])] = weights.map(w => w.w -> w.b)
 
   def predict(x: Tensor[T]): Tensor[T] = activate(x, weights).last.a
 
@@ -197,7 +197,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
         case ((acc, inputs), layer) =>
           val w = random2D(layer.units, inputs)
           val b = zeros(layer.units)
-          (acc :+ (w, b, layer.f), layer.units)
+          (acc :+ Weight(w, b, layer.f), layer.units)
       }
     weights
   }
@@ -208,13 +208,13 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
   ): Array[Neuron[T]] =
     weights
       .foldLeft(input.T, Array.empty[Neuron[T]]) {
-        case ((x, acc), (w, b, activation)) =>
-          println(s"w = $w")
-          println(s"x = ${x}")
-          println(s"b = $b")
-          println(s"res = ${w * x}")
+        case ((x, acc), Weight(w, b, activation)) =>
+          // println(s"w = $w")
+          // println(s"x = ${x}")
+          // println(s"b = $b")
+          // println(s"res = ${w * x}")
           val z = (w * x) + b
-          println(s"res2 = $z")
+          // println(s"res2 = $z")
           val a = activation(z)
           (a, acc :+ Neuron(x, z, a))
       }
@@ -227,24 +227,24 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
   ) = {
     println(s"weights.size = ${weights.length}")
     println(s"activations.size = ${activations.length}")
-    
-    def batchGradient(layer: Int): (T,T) = {
+
+    def batchGradient(layer: Int): (T, T) = {
       val x = activations(layer).x
       val (wg, bg) = lossFunc.gradient(x, error)
       wg.sum -> bg.sum
     }
 
     weights.zipWithIndex.foldLeft(List.empty[Weight[T]]) {
-      case (acc, ((w, b, actFunc), i)) =>
+      case (acc, (Weight(w, b, actFunc), i)) =>
         val (wGradient, bGradient) = batchGradient(i)
-        println(s"wGradient = $wGradient")
-        println(s"w = $w")
-        println(s"b = $b")
+        // println(s"wGradient = $wGradient")
+        // println(s"w = $w")
+        // println(s"b = $b")
         val newWeight = w - (learningRate * wGradient)
         val newBias = b - (learningRate * bGradient)
-        println(s"newWeight = $newWeight")
-        println(s"newBias = $newBias")
-        acc :+ ((newWeight, newBias, actFunc))
+        // println(s"newWeight = $newWeight")
+        // println(s"newBias = $newBias")
+        acc :+ Weight(newWeight, newBias, actFunc)
     }
   }
 
@@ -308,7 +308,11 @@ x = hotEncoder.transform(x, 1)
 //TODO: split x to train and test
 //TODO: scale x features
 val xFloat = transform[Float](x.data)
-// println(xFloat.data.head.mkString(","))
+println(xFloat.data.head.mkString(","))
+
+val scaler = StandardScaler[Float]().fit(xFloat)
+val xTrans = scaler.transform(xFloat)
+// println(s"x = ${xTrans}")
 
 //val x = Tensor2D(
 //  Array(0.2f, 0.3f, 0.4f, 0.5f),
