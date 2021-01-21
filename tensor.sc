@@ -8,6 +8,7 @@ sealed trait Tensor[T] {
   def data: A
   def length: Int
   def sizes: List[Int]
+  def cols: Int
 }
 
 case class Tensor0D[T: ClassTag](data: T) extends Tensor[T] {
@@ -18,6 +19,7 @@ case class Tensor0D[T: ClassTag](data: T) extends Tensor[T] {
     val meta = s"sizes: ${sizes.head}, Tensor0D[${implicitly[ClassTag[T]]}]"
     s"$meta:\n" + data + "\n"
   }
+  override def cols: Int = 0
 }
 
 case class Tensor1D[T: ClassTag](data: Array[T]) extends Tensor[T] {
@@ -30,6 +32,7 @@ case class Tensor1D[T: ClassTag](data: Array[T]) extends Tensor[T] {
     s"$meta:\n[" + data.mkString(",") + "]\n"
   }
   override def length: Int = data.length
+  override def cols: Int = length
 }
 
 object Tensor1D {
@@ -55,7 +58,7 @@ case class Tensor2D[T: ClassTag](data: Array[Array[T]]) extends Tensor[T] {
       .mkString("\n ") + "]\n"
   }
 
-  def cols: Int = sizes2D._2
+  override def cols: Int = sizes2D._2
 
   override def length: Int = data.length
 }
@@ -99,11 +102,12 @@ object Tensor2D {
 
 implicit class TensorOps[T: ClassTag: Numeric](val t: Tensor[T]) {
   def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
-  def map(f: T => T) = Tensor.map(t, f)
+  def map(f: T => T): Tensor[T] = Tensor.map(t, f)
   def -(that: T): Tensor[T] = Tensor.substract(t, Tensor0D(that))
   def -(that: Tensor[T]): Tensor[T] = Tensor.substract(t, that)
   def +(that: Tensor[T]): Tensor[T] = Tensor.plus(t, that)
   def as1D: Tensor1D[T] = Tensor.as1D(t)
+  def as2D: Tensor2D[T] = Tensor.as2D(t)
   def sum: T = Tensor.sum(t)
   def T: Tensor[T] = Tensor.transpose(t)
 }
@@ -123,6 +127,7 @@ implicit class TensorListOps[T: ClassTag: Numeric](val t: List[Tensor[T]]) {
 
 implicit class Tensor2DOps[T: ClassTag](val t: Tensor2D[T]) {
   def col(i: Int): Tensor1D[T] = Tensor1D(Tensor2D.col(t.data, i))
+  def T: Tensor2D[T] = Tensor.transpose(t).asInstanceOf[Tensor2D[T]]
 }
 
 object Tensor {
@@ -138,7 +143,7 @@ object Tensor {
         val res = data.zip(data2).map { case (a, b) => a - b }
         Tensor1D(res)
       case (Tensor2D(data), Tensor0D(data2)) =>
-        Tensor2D(data.map(_.map(_ - data2))) //TODO: test this case
+        Tensor2D(data.map(_.map(_ - data2)))
       case (Tensor1D(data), Tensor0D(data2)) =>
         Tensor1D(data.map(_ - data2))
       case (t1 @ Tensor2D(data), Tensor1D(data2)) =>
@@ -191,7 +196,7 @@ object Tensor {
         scalarMul(t, data)
       case (t, Tensor0D(data)) =>
         scalarMul(t, data)
-      case (Tensor1D(data), Tensor2D(data2)) =>
+      case (Tensor1D(data), Tensor2D(data2)) => //TODO: add sizes validation
         Tensor2D[T](matMul[T](asColumn(data), data2))
       case (Tensor2D(data), Tensor1D(data2)) =>
         Tensor2D[T](matMul[T](data, asColumn(data2)))
@@ -265,8 +270,14 @@ object Tensor {
 
   def as1D[T: ClassTag](t: Tensor[T]): Tensor1D[T] =
     t match {
-      case t1 @ Tensor1D(data) => t1
+      case t1 @ Tensor1D(_) => t1
       case Tensor2D(data)      => Tensor1D(data.flatten)
+    }
+
+  def as2D[T: ClassTag](t: Tensor[T]): Tensor2D[T] =
+    t match {
+      case Tensor1D(data) => Tensor2D(data.map(Array(_)))
+      case t2 @ Tensor2D(_)    => t2
     }
 
   def sum[T: Numeric: ClassTag](t: Tensor[T]): T =
@@ -290,5 +301,4 @@ object Tensor {
         Tensor2D(transposed)
       case _ => t
     }
-
 }

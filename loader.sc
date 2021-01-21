@@ -22,7 +22,7 @@ case class TextLoader(
 
   def load(): TextLoader = copy(
     data = Using.resource(Source.fromFile(path.toFile)) { s =>
-      val lines = s.getLines()//.take(10) // TODO remove this take(10)
+      val lines = s.getLines()
       (if (header && lines.nonEmpty) lines.toArray.tail else lines.toArray)
         .map(_.split(delimiter))
     }

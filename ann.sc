@@ -5,7 +5,7 @@ import $file.loader
 import $file.tensor
 import $file.converter
 
-import Model.{batches, getAvgLoss}
+import Model.{batches, getAvgLoss, batchColumn}
 import loader._
 import tensor._
 import encoders._
@@ -14,7 +14,8 @@ import converter._
 import java.nio.file.Path
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
-
+import scala.reflect.runtime.universe.TypeTag
+import scala.collection.mutable.ArrayBuffer
 sealed trait Activation[T] extends (Tensor[T] => Tensor[T]) {
   def apply(x: Tensor[T]): Tensor[T]
 }
@@ -68,8 +69,9 @@ implicit val mse = new Loss[Float] {
     // println(s"samples = ${error.length}")
     // println(s"x = ${x}")
     // println(s"error = $error")
-    val weightGradient = 1f / error.length * (x * error)
-    val biasGradient = 1f / error.length * error
+    val n = 1f / error.length
+    val weightGradient = n * (x * error)
+    val biasGradient = n * error
     weightGradient -> biasGradient
   }
 }
@@ -124,17 +126,17 @@ case class Dense[T](units: Int = 1)(implicit val f: Activation[T])
 
 sealed trait Model[T] {
   def layers: List[Layer[T]]
-  def train(x: Tensor2D[T], y: Tensor1D[T], epocs: Int): Model[T]
+  def train(x: Tensor[T], y: Tensor1D[T], epocs: Int): Model[T]
   def currentWeights: List[(Tensor[T], Tensor[T])]
   def predict(x: Tensor[T]): Tensor[T]
-  def loss: Tensor[T]
+  def losses: List[T]
 }
 
 trait RandomGen[T] {
   def gen: T
 }
 
-implicit val randomUniform = new RandomGen[Float] {
+implicit val randomUniform: RandomGen[Float] = new RandomGen[Float] {
   def gen: Float = math.random().toFloat + 0.001f
 }
 
@@ -157,8 +159,20 @@ object Model {
   ): Iterator[Array[Array[T]]] =
     t.data.grouped(batchSize)
 
-  def batches[T: ClassTag](t: Tensor1D[T], batchSize: Int): Iterator[Array[T]] =
+  def batchColumn[T: ClassTag](
+      t: Tensor1D[T],
+      batchSize: Int
+  ): Iterator[Array[T]] =
     t.data.grouped(batchSize)
+
+  def batches[T: ClassTag: Numeric](
+      t: Tensor[T],
+      batchSize: Int
+  ): Iterator[Array[Array[T]]] =
+    t match {
+      case t1 @ Tensor1D(data) => t.as2D.data.grouped(batchSize)
+      case Tensor2D(data)      => data.grouped(batchSize)
+    }
 
   def getAvgLoss[T: Numeric](losses: List[T]) =
     implicitly[Numeric[T]].toFloat(losses.sum) / losses.length
@@ -172,21 +186,21 @@ case class Weight[T](w: Tensor[T], b: Tensor[T], f: Activation[T])
  */
 case class Neuron[T](x: Tensor[T], z: Tensor[T], a: Tensor[T])
 
-case class Sequential[T: ClassTag: RandomGen: Numeric](
+case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
     lossFunc: Loss[T],
     optimizer: Optimizer[T],
     learningRate: T,
     batchSize: Int = 32,
     layers: List[Layer[T]] = Nil,
-    weights: List[Weight[T]] = Nil
+    weights: List[Weight[T]] = Nil,
+    losses: List[T] = Nil
 ) extends Model[T] {
   self =>
 
-  def currentWeights: List[(Tensor[T], Tensor[T])] = weights.map(w => w.w -> w.b)
+  def currentWeights: List[(Tensor[T], Tensor[T])] =
+    weights.map(w => w.w -> w.b)
 
   def predict(x: Tensor[T]): Tensor[T] = activate(x, weights).last.a
-
-  def loss: Tensor[T] = ???
 
   def add(l: Layer[T]) =
     self.copy(layers = layers :+ l)
@@ -207,7 +221,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
       weights: List[Weight[T]]
   ): Array[Neuron[T]] =
     weights
-      .foldLeft(input.T, Array.empty[Neuron[T]]) {
+      .foldLeft(input.T, ArrayBuffer.empty[Neuron[T]]) {
         case ((x, acc), Weight(w, b, activation)) =>
           // println(s"w = $w")
           // println(s"x = ${x}")
@@ -219,14 +233,15 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
           (a, acc :+ Neuron(x, z, a))
       }
       ._2
+      .toArray
 
   def updateWeights(
       weights: List[Weight[T]],
       activations: Array[Neuron[T]],
       error: Tensor[T]
   ) = {
-    println(s"weights.size = ${weights.length}")
-    println(s"activations.size = ${activations.length}")
+    // println(s"weights.size = ${weights.length}")
+    // println(s"activations.size = ${activations.length}")
 
     def batchGradient(layer: Int): (T, T) = {
       val x = activations(layer).x
@@ -248,39 +263,51 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
     }
   }
 
-  def train(x: Tensor2D[T], y: Tensor1D[T], epochs: Int): Model[T] = {
-    val inputs = x.cols
-    lazy val actualBatches = batches(y, batchSize).toArray
-    lazy val xBatches = batches(x, batchSize).zip(actualBatches)
-
-    val (updatedWeights, epochLosses) =
-      (0 until epochs).foldLeft(getWeights(inputs), List.empty[T]) {
-        case ((weights, losses), epoch) =>
-          val epochRes = xBatches.foldLeft(weights, losses) { // mini-batch SGD
-            case ((weights, losses), (batch, actualBatch)) =>
-              // forward
-              println(s"batch size = ${batch.length}")
-              val activations = activate(Tensor2D(batch), weights)
-              println(s"activations = ${activations.mkString("\n---------\n")}")
-              val actual = Tensor1D(actualBatch)
-              val predicted = activations.last.a.as1D
-              println(s"predicted = $predicted")
-              println(s"actual = $actual")
-              val error = predicted - actual
-              println(s"error = $error")
-              val loss = lossFunc(actual, predicted)
-              println(s"loss = $loss")
-              // backward
-              val updated = updateWeights(weights, activations, error)
-              (updated, losses :+ loss)
-          }
-          println(s"epoch: $epoch, avg loss: ${getAvgLoss(epochRes._2)}")
-          epochRes
+  private def trainEpoch(
+      xBatches: List[(Array[Array[T]], Array[T])],
+      weights: List[Weight[T]],
+      epoch: Int
+  ) = {
+    val (w, l) =
+      xBatches.foldLeft((weights, List.empty[T])) { // mini-batch SGD
+        case ((weights, batchLoss), (batch, actualBatch)) =>
+          // forward
+          // println(s"batch size = ${batch.length}")
+          val activations = activate(Tensor2D(batch), weights)
+          //println(s"activations = ${activations.mkString("\n---------\n")}")
+          val actual = Tensor1D(actualBatch)
+          val predicted = activations.last.a.as1D
+          // println(s"predicted = $predicted")
+          // println(s"actual = $actual")
+          val error = predicted - actual
+          // println(s"error = $error")
+          val loss = lossFunc(actual, predicted)
+          // println(s"loss = $loss")
+          // backward
+          val updated = updateWeights(weights, activations, error)
+          (updated, batchLoss :+ loss)
       }
-    println(s"losses count: ${epochLosses.length}")
-    println(s"losses: ${epochLosses.mkString("\n")}")
+    val avgLoss = getAvgLoss(l)
+    println(s"epoch: $epoch, avg loss: $avgLoss")
+    (w, transformAny[Float, T](avgLoss))
+  }
 
-    copy(weights = updatedWeights)
+  def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): Model[T] = {
+    val inputs = x.cols
+    lazy val actualBatches = batchColumn(y, batchSize).toArray
+    lazy val xBatches = batches(x, batchSize).zip(actualBatches).toList
+
+    val w = getWeights(inputs)
+    val (updatedWeights, epochLosses) =
+      (0 until epochs).foldLeft((w, List.empty[T])) {
+        case ((weights, losses), epoch) =>
+          val (w, l) = trainEpoch(xBatches, weights, epoch)
+          (w, losses :+ l)
+      }
+    // println(s"losses count: ${epochLosses.length}")
+    // println(s"losses:\n${epochLosses.mkString("\n")}")
+
+    copy(weights = updatedWeights, losses = epochLosses)
   }
 
   private def getWeights(inputs: Int) =
@@ -288,7 +315,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
 }
 
 val ann =
-  Sequential(mse, miniBatchGradientDescent, learningRate = 0.0001f, 32)
+  Sequential(mse, miniBatchGradientDescent, learningRate = 0.001f)
     .add(Dense(6)(relu))
     .add(Dense(6)(relu))
     .add(Dense()(sigmoid))
@@ -298,28 +325,17 @@ val data = TextLoader(Path.of("data", "Churn_Modelling.csv")).load()
 val y = data.col[Float](-1)
 // println(y.data.mkString(", "))
 
-var x = data.cols[String](3, -1)
-// println(x.data.head.mkString(","))
-val encoder = LabelEncoder[String]().fit(x.col(2))
-x = encoder.transform(x, 2)
-val hotEncoder = OneHotEncoder[String, Float]().fit(x.col(1))
-// println(hotEncoder.classes)
-x = hotEncoder.transform(x, 1)
+var xRaw = data.cols[String](3, -1)
+val encoder = LabelEncoder[String]().fit(xRaw.col(2))
+xRaw = encoder.transform(xRaw, 2)
+val hotEncoder = OneHotEncoder[String, Float]().fit(xRaw.col(1))
+xRaw = hotEncoder.transform(xRaw, 1)
 //TODO: split x to train and test
 //TODO: scale x features
-val xFloat = transform[Float](x.data)
-println(xFloat.data.head.mkString(","))
+val xFloat = transform[Float](xRaw.data)
 
 val scaler = StandardScaler[Float]().fit(xFloat)
-val xTrans = scaler.transform(xFloat)
-// println(s"x = ${xTrans}")
+val x = scaler.transform(xFloat)
 
-//val x = Tensor2D(
-//  Array(0.2f, 0.3f, 0.4f, 0.5f),
-//  Array(0.1f, 0.1f, 0.4f, 0.2f)
-//)
-//val y = Tensor1D(0.8f, 0.3f)
-
-val model = ann.train(xFloat, y, epochs = 1)
-println("\nweights:\n\n" + model.currentWeights.mkString("\n"))
-// print(x.data.map(_.mkString(", ")).mkString("\n"))
+val model = ann.train(x, y, epochs = 100)
+println("\nweights:\n\n" + model.currentWeights.mkString("\n\n"))
