@@ -15,27 +15,29 @@ import java.nio.file.Path
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
 
-sealed trait Activation[T] extends (T => T) {
-  def apply(x: T): T //TODO: change input & output param to Tensor[T]
+sealed trait Activation[T] extends (Tensor[T] => Tensor[T]) {
+  def apply(x: Tensor[T]): Tensor[T]
 }
 
 trait Relu[T] extends Activation[T]
 trait Sigmoid[T] extends Activation[T]
 
 implicit val relu = new Relu[Float] {
-  override def apply(x: Float): Float = math.max(0, x)
+  override def apply(x: Tensor[Float]): Tensor[Float] =
+    Tensor.map(x, t => math.max(0, t))
 }
 
 implicit val sigmoid = new Sigmoid[Float] {
-  override def apply(x: Float): Float = 1 / (1 + math.exp(-x).toFloat)
+  override def apply(x: Tensor[Float]): Tensor[Float] =
+    Tensor.map(x, t => 1 / (1 + math.exp(-t).toFloat))
+
 }
 
 sealed trait Gradient[T] {
   def gradient(
-      samples: Int,
       x: Tensor[T],
       error: Tensor[T]
-  ): Tensor[T]
+  ): (Tensor[T], Tensor[T])
 }
 sealed trait Loss[T] extends Gradient[T] {
   def apply(
@@ -60,14 +62,15 @@ implicit val mse = new Loss[Float] {
   }
 
   override def gradient(
-      samples: Int,
       x: Tensor[Float],
       error: Tensor[Float]
-  ): Tensor[Float] = {
-    println(s"samples = $samples")
+  ): (Tensor[Float], Tensor[Float]) = {
+    println(s"samples = ${error.length}")
     println(s"x = ${x}")
     println(s"error = $error")
-    1f / samples * (x * error)
+    val weightGradient = 1f / error.length * (x * error)
+    val biasGradient = 1f / error.length * error
+    weightGradient -> biasGradient
   }
 }
 
@@ -189,7 +192,6 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
     self.copy(layers = layers :+ l)
 
   def initialWeights(inputs: Int): List[Weight[T]] = {
-    lazy val zero = implicitly[Numeric[T]].zero
     val (weights, _) =
       layers.foldLeft(List.empty[Weight[T]], inputs) {
         case ((acc, inputs), layer) =>
@@ -211,9 +213,9 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
           println(s"x = ${x}")
           println(s"b = $b")
           println(s"res = ${w * x}")
-          // println(s"res2 = ${b + (w * x)}")
-          val z = (w * x)
-          val a = z.map(activation)
+          val z = (w * x) + b
+          println(s"res2 = $z")
+          val a = activation(z)
           (a, acc :+ Neuron(x, z, a))
       }
       ._2
@@ -225,26 +227,23 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
   ) = {
     println(s"weights.size = ${weights.length}")
     println(s"activations.size = ${activations.length}")
-    val zero = implicitly[Numeric[T]].zero
-
-    def batchGradient(layer: Int): T =
-      activations
-        .foldLeft(zero) { case (acc, layers) =>
-          // println(s"layers.size = ${layers.length}, layer = $layer")
-          // println(s"xi = ${layers(layer).x}")
-          val gradient =
-            lossFunc.gradient(activations.length, layers.x, error).sum
-          gradient + acc
-        }
+    
+    def batchGradient(layer: Int): (T,T) = {
+      val x = activations(layer).x
+      val (wg, bg) = lossFunc.gradient(x, error)
+      wg.sum -> bg.sum
+    }
 
     weights.zipWithIndex.foldLeft(List.empty[Weight[T]]) {
       case (acc, ((w, b, actFunc), i)) =>
-        val gradient = batchGradient(i)
-        println(s"gradient = $gradient")
+        val (wGradient, bGradient) = batchGradient(i)
+        println(s"wGradient = $wGradient")
         println(s"w = $w")
-        val newWeight = w - (learningRate * gradient)
-        val newBias =
-          b //- learningRate * gradient //TODO: * biasGradient
+        println(s"b = $b")
+        val newWeight = w - (learningRate * wGradient)
+        val newBias = b - (learningRate * bGradient)
+        println(s"newWeight = $newWeight")
+        println(s"newBias = $newBias")
         acc :+ ((newWeight, newBias, actFunc))
     }
   }
@@ -260,7 +259,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric](
           val epochRes = xBatches.foldLeft(weights, losses) { // mini-batch SGD
             case ((weights, losses), (batch, actualBatch)) =>
               // forward
-              println(s"batch size = ${batch.length}")              
+              println(s"batch size = ${batch.length}")
               val activations = activate(Tensor2D(batch), weights)
               println(s"activations = ${activations.mkString("\n---------\n")}")
               val actual = Tensor1D(actualBatch)

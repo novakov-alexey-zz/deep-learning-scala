@@ -159,34 +159,31 @@ object Tensor {
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ + data2)))
       case (t1 @ Tensor2D(data), t2 @ Tensor1D(data2)) =>
-        val (rows, cols) = t1.sizes2D
-        assert(
-          cols == 1,
-          s"tensors must be have the same column length to sum them up, but were: $cols != 1"
-        )
-        assert(
-          rows == t2.length,
-          s"tensors must be have the same rows length to sum them up, but were: $rows != ${t2.length}"
-        )
-        val sum = Array.ofDim[T](rows, cols)
-        for (i <- data.indices) {
-          sum(i)(0) = data(i)(0) + data2(i)
-        }
-        Tensor2D(sum)
-      case (t1 @ Tensor1D(data), t2 @ Tensor2D(data2)) =>
-        assert(
-          data.length == t2.length,
-          s"t1 vector lenght must be equal to number of rows in t2, ${data.length} != ${t2.length}"
-        )
-        Tensor1D(data.zipWithIndex.map { case (d, i) =>
-          d + data2(i).sum
-        })
+        plus(t1, t2)
+      case (t1 @ Tensor1D(_), t2 @ Tensor2D(_)) =>
+        plus(t2, t1)
       case (Tensor1D(data), Tensor0D(data2)) =>
         Tensor1D(data.map(_ + data2))
       case (Tensor0D(data), Tensor1D(data2)) =>
         Tensor1D(data2.map(_ + data))
       case _ => sys.error(s"Not implemented for:\n$a\nand\n$b!")
     }
+
+  private def plus[T: ClassTag: Numeric](t1: Tensor2D[T], t2: Tensor1D[T]) = {
+    val (rows, cols) = t1.sizes2D
+    assert(
+      rows == t2.length,
+      s"tensors must have the same amount of rows to sum them up element-wise, but were: $rows != ${t2.length}"
+    )
+    val sum = Array.ofDim[T](rows, cols)
+    for (i <- (0 until rows)) {
+      for (j <- (0 until cols)) {
+        sum(i)(j) = t1.data(i)(j) + t2.data(i)
+      }
+
+    }
+    Tensor2D(sum)
+  }
 
   def mul[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match {
@@ -201,7 +198,10 @@ object Tensor {
       case (Tensor1D(data), Tensor1D(data2)) =>
         Tensor1D[T](matMul[T](asColumn(data), Array(data2)).head)
       case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>
-        assert(t1.cols == t2.length, "The number of columns in the first matrix should be equal to the number of rows in the second")
+        assert(
+          t1.cols == t2.length,
+          "The number of columns in the first matrix should be equal to the number of rows in the second"
+        )
         Tensor2D[T](matMul[T](data, data2))
     }
 
