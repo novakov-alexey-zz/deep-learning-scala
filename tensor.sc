@@ -110,6 +110,7 @@ implicit class TensorOps[T: ClassTag: Numeric](val t: Tensor[T]) {
   def as2D: Tensor2D[T] = Tensor.as2D(t)
   def sum: T = Tensor.sum(t)
   def T: Tensor[T] = Tensor.transpose(t)
+  def split(fraction: Float): (Tensor[T], Tensor[T]) = Tensor.split(fraction, t)
 }
 
 implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T) {
@@ -123,6 +124,12 @@ implicit class TensorArrayOps[T: ClassTag: Numeric](val t: Array[Tensor[T]]) {
 
 implicit class TensorListOps[T: ClassTag: Numeric](val t: List[Tensor[T]]) {
   def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)
+}
+implicit class TensorTupleOps[T: ClassTag: Numeric](
+    val pair: (Tensor[T], Tensor[T])
+) {
+  def split(fraction: Float): ((Tensor[T], Tensor[T]), (Tensor[T], Tensor[T])) =
+    Tensor.splitPair(fraction, pair)
 }
 
 implicit class Tensor2DOps[T: ClassTag](val t: Tensor2D[T]) {
@@ -271,13 +278,13 @@ object Tensor {
   def as1D[T: ClassTag](t: Tensor[T]): Tensor1D[T] =
     t match {
       case t1 @ Tensor1D(_) => t1
-      case Tensor2D(data)      => Tensor1D(data.flatten)
+      case Tensor2D(data)   => Tensor1D(data.flatten)
     }
 
   def as2D[T: ClassTag](t: Tensor[T]): Tensor2D[T] =
     t match {
-      case Tensor1D(data) => Tensor2D(data.map(Array(_)))
-      case t2 @ Tensor2D(_)    => t2
+      case Tensor1D(data)   => Tensor2D(data.map(Array(_)))
+      case t2 @ Tensor2D(_) => t2
     }
 
   def sum[T: Numeric: ClassTag](t: Tensor[T]): T =
@@ -301,4 +308,56 @@ object Tensor {
         Tensor2D(transposed)
       case _ => t
     }
+
+  def split[T: ClassTag](
+      fraction: Float,
+      t: Tensor[T]
+  ): (Tensor[T], Tensor[T]) =
+    t match {
+      case Tensor0D(_) => (t, t)
+      case Tensor1D(data) =>
+        val (l, r) = splitArray(fraction, data)
+        (Tensor1D(l), Tensor1D(r))
+      case Tensor2D(data) =>
+        val (l, r) = splitArray(fraction, data)
+        (Tensor2D(l), Tensor2D(r))
+    }
+
+  private def splitArray[T](
+      fraction: Float,
+      data: Array[T]
+  ): (Array[T], Array[T]) = {
+    val count = data.length * fraction
+    val countOrZero = if (count < 1) 0 else count    
+    data.splitAt(data.length - countOrZero.toInt)
+  }
+
+  def splitPair[T: ClassTag](
+      fraction: Float,
+      t: (Tensor[T], Tensor[T])
+  ): ((Tensor[T], Tensor[T]), (Tensor[T], Tensor[T])) = {
+    val (l, r) = t
+    assert(l.length == r.length, "Both tensors must have the same size")
+    split(fraction, l) -> split(fraction, r)
+  }
+}
+
+trait RandomGen[T] {
+  def gen: T
+}
+
+implicit val randomUniform: RandomGen[Float] = new RandomGen[Float] {
+  def gen: Float = math.random().toFloat + 0.001f
+}
+
+def random2D[T: ClassTag](rows: Int, cols: Int)(implicit
+    rng: RandomGen[T]
+): Tensor2D[T] = {
+  val rnd = implicitly[RandomGen[T]]
+  Tensor2D(Array.fill(rows)(Array.fill[T](cols)(rnd.gen)))
+}
+
+def zeros[T: Numeric: ClassTag](length: Int): Tensor1D[T] = {
+  val zero = implicitly[Numeric[T]].zero
+  Tensor1D(Array.fill(length)(zero))
 }

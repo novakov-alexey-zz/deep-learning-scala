@@ -31,14 +31,15 @@ implicit val relu = new Relu[Float] {
 implicit val sigmoid = new Sigmoid[Float] {
   override def apply(x: Tensor[Float]): Tensor[Float] =
     Tensor.map(x, t => 1 / (1 + math.exp(-t).toFloat))
-
 }
 
 sealed trait Gradient[T] {
+  type Delta = (Tensor[T], Tensor[T])
+
   def gradient(
       x: Tensor[T],
       error: Tensor[T]
-  ): (Tensor[T], Tensor[T])
+  ): Delta
 }
 sealed trait Loss[T] extends Gradient[T] {
   def apply(
@@ -65,7 +66,7 @@ implicit val mse = new Loss[Float] {
   override def gradient(
       x: Tensor[Float],
       error: Tensor[Float]
-  ): (Tensor[Float], Tensor[Float]) = {
+  ): Delta = {
     // println(s"samples = ${error.length}")
     // println(s"x = ${x}")
     // println(s"error = $error")
@@ -105,7 +106,9 @@ implicit val mse = new Loss[Float] {
 // }
 
 sealed trait Optimizer[T] {
-  def apply(t: Tensor2D[T]): Tensor2D[T]
+  def apply(
+      t: Tensor2D[T]
+  ): Tensor2D[T] //TODO: change this to def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): (List[Weight], List[T])
 }
 
 implicit val adam = new Optimizer[Float] {
@@ -132,26 +135,6 @@ sealed trait Model[T] {
   def losses: List[T]
 }
 
-trait RandomGen[T] {
-  def gen: T
-}
-
-implicit val randomUniform: RandomGen[Float] = new RandomGen[Float] {
-  def gen: Float = math.random().toFloat + 0.001f
-}
-
-def random2D[T: ClassTag](rows: Int, cols: Int)(implicit
-    rng: RandomGen[T]
-): Tensor2D[T] = {
-  val rnd = implicitly[RandomGen[T]]
-  Tensor2D(Array.fill(rows)(Array.fill[T](cols)(rnd.gen)))
-}
-
-def zeros[T: Numeric: ClassTag](length: Int): Tensor1D[T] = {
-  val zero = implicitly[Numeric[T]].zero
-  Tensor1D(Array.fill(length)(zero))
-}
-
 object Model {
   def batches[T: ClassTag](
       t: Tensor2D[T],
@@ -170,8 +153,8 @@ object Model {
       batchSize: Int
   ): Iterator[Array[Array[T]]] =
     t match {
-      case t1 @ Tensor1D(data) => t.as2D.data.grouped(batchSize)
-      case Tensor2D(data)      => data.grouped(batchSize)
+      case Tensor1D(data) => t.as2D.data.grouped(batchSize)
+      case Tensor2D(data) => data.grouped(batchSize)
     }
 
   def getAvgLoss[T: Numeric](losses: List[T]) =
@@ -184,7 +167,11 @@ case class Weight[T](w: Tensor[T], b: Tensor[T], f: Activation[T])
  * z - before activation = w * x
  * a - activation value
  */
-case class Neuron[T](x: Tensor[T], z: Tensor[T], a: Tensor[T])
+case class Neuron[T](
+    x: Tensor[T],
+    z: Tensor[T],
+    a: Tensor[T]
+) //TODO: add error property for backpropagation
 
 case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
     lossFunc: Loss[T],
@@ -288,7 +275,6 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
           (updated, batchLoss :+ loss)
       }
     val avgLoss = getAvgLoss(l)
-    println(s"epoch: $epoch, avg loss: $avgLoss")
     (w, transformAny[Float, T](avgLoss))
   }
 
@@ -302,6 +288,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
       (0 until epochs).foldLeft((w, List.empty[T])) {
         case ((weights, losses), epoch) =>
           val (w, l) = trainEpoch(xBatches, weights, epoch)
+          println(s"epoch: ${epoch + 1}/$epochs, avg. loss: $l")
           (w, losses :+ l)
       }
     // println(s"losses count: ${epochLosses.length}")
@@ -314,28 +301,31 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
     if (weights == Nil) initialWeights(inputs) else weights
 }
 
+def prepareData() = {
+  //1,15634602,Hargrave,619,France,Female,42,2,0,1,1,1,101348.88,1 = length 14
+  val data = TextLoader(Path.of("data", "Churn_Modelling.csv")).load()
+  val y = data.col[Float](-1)
+
+  var xRaw = data.cols[String](3, -1)
+  val encoder = LabelEncoder[String]().fit(xRaw.col(2))
+  xRaw = encoder.transform(xRaw, 2)
+  val hotEncoder = OneHotEncoder[String, Float]().fit(xRaw.col(1))
+  xRaw = hotEncoder.transform(xRaw, 1)
+  val xFloat = transform[Float](xRaw.data)
+
+  val scaler = StandardScaler[Float]().fit(xFloat)
+  val x = scaler.transform(xFloat)
+  (x, y)
+}
+
 val ann =
   Sequential(mse, miniBatchGradientDescent, learningRate = 0.001f)
     .add(Dense(6)(relu))
     .add(Dense(6)(relu))
     .add(Dense()(sigmoid))
 
-//1,15634602,Hargrave,619,France,Female,42,2,0,1,1,1,101348.88,1 = length 14
-val data = TextLoader(Path.of("data", "Churn_Modelling.csv")).load()
-val y = data.col[Float](-1)
-// println(y.data.mkString(", "))
+val (x, y) = prepareData()
+val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
 
-var xRaw = data.cols[String](3, -1)
-val encoder = LabelEncoder[String]().fit(xRaw.col(2))
-xRaw = encoder.transform(xRaw, 2)
-val hotEncoder = OneHotEncoder[String, Float]().fit(xRaw.col(1))
-xRaw = hotEncoder.transform(xRaw, 1)
-//TODO: split x to train and test
-//TODO: scale x features
-val xFloat = transform[Float](xRaw.data)
-
-val scaler = StandardScaler[Float]().fit(xFloat)
-val x = scaler.transform(xFloat)
-
-val model = ann.train(x, y, epochs = 100)
+val model = ann.train(xTrain, yTrain.as1D, epochs = 100)
 println("\nweights:\n\n" + model.currentWeights.mkString("\n\n"))
