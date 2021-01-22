@@ -250,32 +250,46 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
     }
   }
 
+  private def correctPredictions(
+      actual: Tensor1D[T],
+      predicted: Tensor1D[T]
+  ): Int =
+    actual.data.zip(predicted.data).foldLeft(0) { case (acc, (y, yhat)) =>
+      val normalized = if (yhat.toFloat > 0.5) 1 else 0
+      acc + (if (y == normalized) 1 else 0)
+    }
+
   private def trainEpoch(
       xBatches: List[(Array[Array[T]], Array[T])],
       weights: List[Weight[T]],
       epoch: Int
   ) = {
-    val (w, l) =
-      xBatches.foldLeft((weights, List.empty[T])) { // mini-batch SGD
-        case ((weights, batchLoss), (batch, actualBatch)) =>
+    val (w, l, positives) =
+      xBatches.foldLeft(weights, List.empty[T], 0f) { // mini-batch SGD
+        case ((weights, batchLoss, positives), (batch, actualBatch)) =>
           // forward
           // println(s"batch size = ${batch.length}")
           val activations = activate(Tensor2D(batch), weights)
           //println(s"activations = ${activations.mkString("\n---------\n")}")
           val actual = Tensor1D(actualBatch)
           val predicted = activations.last.a.as1D
-          // println(s"predicted = $predicted")
-          // println(s"actual = $actual")
+          if (epoch % 20 == 0) {
+            val positive = predicted.data.filter(_.toFloat > 0.5)
+            // if (positive.nonEmpty) println(s"positive = ${positive.mkString(",")}")
+            // println(s"predicted = $predicted")
+            // println(s"actual = $actual")
+          }
           val error = predicted - actual
-          // println(s"error = $error")
+          // if (epoch % 20 == 0) println(s"error = $error")
           val loss = lossFunc(actual, predicted)
           // println(s"loss = $loss")
           // backward
           val updated = updateWeights(weights, activations, error)
-          (updated, batchLoss :+ loss)
+          val correct = correctPredictions(actual, predicted)
+          (updated, batchLoss :+ loss, positives + correct)
       }
     val avgLoss = getAvgLoss(l)
-    (w, transformAny[Float, T](avgLoss))
+    (w, transformAny[Float, T](avgLoss), positives)
   }
 
   def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): Model[T] = {
@@ -287,8 +301,11 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
     val (updatedWeights, epochLosses) =
       (0 until epochs).foldLeft((w, List.empty[T])) {
         case ((weights, losses), epoch) =>
-          val (w, l) = trainEpoch(xBatches, weights, epoch)
-          println(s"epoch: ${epoch + 1}/$epochs, avg. loss: $l")
+          val (w, l, positives) = trainEpoch(xBatches, weights, epoch)
+          val accuracy = positives / x.length
+          println(
+            s"epoch: ${epoch + 1}/$epochs, avg. loss: $l, accuracy: $accuracy"
+          )
           (w, losses :+ l)
       }
     // println(s"losses count: ${epochLosses.length}")
