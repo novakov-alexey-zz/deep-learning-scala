@@ -13,10 +13,18 @@ import scala.io.Source
 import scala.reflect.ClassTag
 import scala.util.Using
 
+object TextLoader {
+  val defaultDelimiter: String = ","
+
+  def apply(rows: String*): TextLoader = {
+    TextLoader(data = rows.toArray.map(_.split(defaultDelimiter).toArray))
+  }
+}
+
 case class TextLoader(
-    path: Path,
+    path: Path = Path.of("data.csv"),
     header: Boolean = true,
-    delimiter: String = ",",
+    delimiter: String = TextLoader.defaultDelimiter,
     data: Array[Array[String]] = Array.empty[Array[String]]
 ) {
 

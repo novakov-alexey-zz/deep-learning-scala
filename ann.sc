@@ -25,11 +25,11 @@ sealed trait Activation[T] extends (Tensor[T] => Tensor[T]) {
 
 implicit val relu = new Activation[Float] {
 
-  override def derivative(x: tensor.Tensor[Float]): tensor.Tensor[Float] =
-    Tensor.map(x, t => if (t < 0) 0 else 1)
-
   override def apply(x: Tensor[Float]): Tensor[Float] =
     Tensor.map(x, t => math.max(0, t))
+
+  override def derivative(x: tensor.Tensor[Float]): tensor.Tensor[Float] =
+    Tensor.map(x, t => if (t < 0) 0 else 1)
 }
 
 implicit val sigmoid = new Activation[Float] {
@@ -44,15 +44,7 @@ implicit val sigmoid = new Activation[Float] {
     )
 }
 
-sealed trait Gradient[T] {
-  type Delta = (Tensor[T], Tensor[T])
-
-  def gradient(
-      x: Tensor[T],
-      error: Tensor[T]
-  ): Delta
-}
-sealed trait Loss[T] extends Gradient[T] {
+sealed trait Loss[T] {
   def apply(
       actual: Tensor1D[T],
       predicted: Tensor1D[T]
@@ -73,69 +65,90 @@ implicit val mse = new Loss[Float] {
     val meanSumScore = 1.0 / actual.length * sumScore
     meanSumScore.toFloat
   }
+}
 
-  override def gradient(
-      x: Tensor[Float],
-      error: Tensor[Float]
-  ): Delta = {
-    // println(s"samples = ${error.length}")
-    println(s"x = ${x}")
-    println(s"error = $error")
-    val n = 1f / error.length
-    val weightGradient = n * (x * error)
-    val biasGradient = n * error
-    weightGradient -> biasGradient
+implicit val binaryCrossEntropy = new Loss[Float] {
+  /*
+  TODO: implement second case for multi-class prediction
+
+  def categorical_cross_entropy(actual, predicted):
+    sum_score = 0.0
+    for i in range(len(actual)):
+      for j in range(len(actual[i])):
+        sum_score += actual[i][j] * log(1e-15 + predicted[i][j])
+    mean_sum_score = 1.0 / len(actual) * sum_score
+    return -mean_sum_score
+   */
+  override def apply(
+      actual: Tensor1D[Float],
+      predicted: Tensor1D[Float]
+  ): Float = {
+    var sumScore = 0.0
+    for {
+      y1 <- actual.data
+      y2 <- predicted.data
+    } {
+      sumScore += y1 * math.log(1e-15 + y2.toDouble)
+    }
+    val meanSumScore = 1.0 / actual.length * sumScore
+    -meanSumScore.toFloat
   }
 }
 
-// implicit val binaryCrossEntropy = new Loss[Float] {
-//   /*
-//   TODO: implement second case for multi-class prediction
+sealed trait Optimizer[U] {
 
-//   def categorical_cross_entropy(actual, predicted):
-//     sum_score = 0.0
-//     for i in range(len(actual)):
-//       for j in range(len(actual[i])):
-//         sum_score += actual[i][j] * log(1e-15 + predicted[i][j])
-//     mean_sum_score = 1.0 / len(actual) * sum_score
-//     return -mean_sum_score
-//    */
-//   override def apply(
-//       actual: Tensor1D[Float],
-//       predicted: Tensor1D[Float]
-//   ): Float = {
-//     var sumScore = 0.0
-//     for {
-//       y1 <- actual.data
-//       y2 <- predicted.data
-//     } {
-//       sumScore += y1 * math.log(1e-15 + y2.toDouble)
-//     }
-//     val meanSumScore = 1.0 / actual.length * sumScore
-//     -meanSumScore.toFloat
-//   }
-// }
+  def updateWeights[T: Numeric: ClassTag: TypeTag](
+      weights: List[Weight[T]],
+      neurons: List[Neuron[T]],
+      error: Tensor[T],
+      learningRate: T
+  ): List[Weight[T]]
 
-sealed trait Optimizer[T] {
-  def apply(
-      t: Tensor2D[T]
-  ): Tensor2D[T] //TODO: change this to def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): (List[Weight], List[T])
 }
 
-implicit val adam = new Optimizer[Float] {
-  override def apply(t: Tensor2D[Float]): Tensor2D[Float] = ???
-}
+sealed trait MiniBatchGD
 
-implicit val miniBatchGradientDescent = new Optimizer[Float] {
-  //TODO: move initial algorithm here
-  override def apply(t: Tensor2D[Float]): Tensor2D[Float] = ???
+object optimizers {
+  implicit val miniBatchGradientDescent = new Optimizer[MiniBatchGD] {
+
+    override  def updateWeights[T: Numeric: ClassTag: TypeTag](
+        weights: List[Weight[T]],
+        neurons: List[Neuron[T]],
+        error: Tensor[T],
+        learningRate: T
+    ): List[Weight[T]] = 
+      weights
+        .zip(neurons)
+        .foldRight(
+          List.empty[Weight[T]],
+          error,
+          None: Option[Tensor[T]]
+        ) {
+          case (
+                (Weight(w, b, actFunc), neuron),
+                (ws, prevDelta, prevWeight)
+              ) =>          
+            val delta = prevWeight match {
+              case Some(pw) => (prevDelta * pw.T) multiply actFunc.derivative(neuron.z)
+              case None => prevDelta
+            }
+
+            val partialDerivative = neuron.x.T * delta          
+            val newWeight = w - (learningRate * partialDerivative)        
+            val newBias = b - (learningRate * delta.sum)          
+            val updated = Weight(newWeight, newBias, actFunc) +: ws
+            (updated, delta, Some(w))
+        }
+        ._1
+  }
 }
 
 sealed trait Layer[T] {
   def units: Int
   def f: Activation[T]
 }
-case class Dense[T](units: Int = 1)(implicit val f: Activation[T])
+
+case class Dense[T](f: Activation[T], units: Int = 1)
     extends Layer[T]
 
 sealed trait Model[T] {
@@ -182,18 +195,16 @@ case class Neuron[T](
     x: Tensor[T],
     z: Tensor[T],
     a: Tensor[T]
-) //TODO: add error property for backpropagation
+)
 
-case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U](
-    lossFunc: Loss[T],
-    optimizer: Optimizer[T],
+case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U: Optimizer](
+    lossFunc: Loss[T],    
     learningRate: T,
     batchSize: Int = 32,
     layers: List[Layer[T]] = Nil,
     weights: List[Weight[T]] = Nil,
     losses: List[T] = Nil
-) extends Model[T] {
-  self =>
+) extends Model[T] { 
 
   def currentWeights: List[(Tensor[T], Tensor[T])] =
     weights.map(w => w.w -> w.b)
@@ -201,80 +212,30 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U](
   def predict(x: Tensor[T]): Tensor[T] = activate(x, weights).last.a
 
   def add(l: Layer[T]) =
-    self.copy(layers = layers :+ l)
+    copy(layers = layers :+ l)
 
-  def initialWeights(inputs: Int): List[Weight[T]] = {
-    val (weights, _) =
-      layers.foldLeft(List.empty[Weight[T]], inputs) {
-        case ((acc, inputs), layer) =>
-          val w = random2D(inputs, layer.units)
-          val b = zeros(layer.units)
-          (acc :+ Weight(w, b, layer.f), layer.units)
-      }
-    weights
-  }
+  def initialWeights(inputs: Int): List[Weight[T]] = 
+    layers.foldLeft(List.empty[Weight[T]], inputs) {
+      case ((acc, inputs), layer) =>
+        val w = random2D(inputs, layer.units)
+        val b = zeros(layer.units)
+        (acc :+ Weight(w, b, layer.f), layer.units)
+    }._1  
 
   private def activate(
       input: Tensor[T],
       weights: List[Weight[T]]
-  ): Array[Neuron[T]] =
+  ): List[Neuron[T]] =
     weights
       .foldLeft(input, ArrayBuffer.empty[Neuron[T]]) {
-        case ((x, acc), Weight(w, b, activation)) =>
-          // println(s"w = $w")
-          // println(s"x = ${x}")
-          // println(s"b = $b")
-          // println(s"res = ${x * w}")
-          val z = (x * w) + b
-          // println(s"res2 = $z")
+        case ((x, acc), Weight(w, b, activation)) =>          
+          val z = (x * w) + b          
           val a = activation(z)
           (a, acc :+ Neuron(x, z, a))
       }
       ._2
-      .toArray
-
-  def updateWeights(
-      weights: List[Weight[T]],
-      activations: Array[Neuron[T]],
-      error: Tensor[T]
-  ) = {
-    // println(s"initial error = ${error}")
-    weights
-      .zip(activations)
-      .foldRight(
-        List.empty[Weight[T]],
-        error,
-        None: Option[Tensor[T]]
-      ) {
-        case (
-              (Weight(w, b, actFunc), neuron),
-              (ws, prevDelta, prevWeight)
-            ) =>
-          // println(s"prevDelta = $prevDelta")
-          // println(s"prevWeight = $prevWeight")
-          // println(s"z.T = ${neuron.z.T}")
-          // println(s"w = $w")
-          val delta = prevWeight match {
-            case Some(pw) =>
-              (prevDelta * pw.T) multiply actFunc.derivative(neuron.z)
-            case None => prevDelta
-          }
-          // println(s"delta = $delta")
-          // println(s"neuron.x.T = ${neuron.x.T}")
-
-          val wPartialDerivative = neuron.x.T * delta
-          // println(s"wPartialDerivative = $wPartialDerivative")
-          // println(s"b = $b")
-          val newWeight = w - (learningRate * wPartialDerivative)
-          // println(s"newWeight = $newWeight")
-          val newBias = b - (learningRate * delta.sum)
-          // println(s"newBias = $newBias")
-          val updated = Weight(newWeight, newBias, actFunc) +: ws
-          (updated, delta, Some(w))
-      }
-      ._1
-  }
-
+      .toList
+  
   private def correctPredictions(
       actual: Tensor1D[T],
       predicted: Tensor1D[T]
@@ -290,31 +251,22 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U](
       epoch: Int
   ) = {
     val (w, l, positives) =
-      xBatches.foldLeft(weights, List.empty[T], 0f) { // mini-batch SGD
+      xBatches.foldLeft(weights, List.empty[T], 0f) {
         case ((weights, batchLoss, positives), (batch, actualBatch)) =>
-          // forward
-          // println(s"batch size = ${batch.length}")
-          val activations = activate(Tensor2D(batch), weights)
-          //println(s"activations = ${activations.mkString("\n---------\n")}")
+          // forward          
+          val neurons = activate(Tensor2D(batch), weights)          
           val actual = Tensor1D(actualBatch)
-          val predicted = activations.last.a.as1D
-          if (epoch % 20 == 0) {
-            val positive = predicted.data.filter(_.toFloat > 0.5)
-            // if (positive.nonEmpty) println(s"positive = ${positive.mkString(",")}")
-            // println(s"predicted = $predicted")
-            // println(s"actual = $actual")
-          }
-          val error = predicted - actual
-          //println(s"error = $error")
+          val predicted = neurons.last.a.as1D          
+          val error = predicted - actual          
           val loss = lossFunc(actual, predicted)
-          // println(s"loss = $loss")
+          
           // backward
-          val updated = updateWeights(weights, activations, error)
+          val updated = implicitly[Optimizer[U]].updateWeights(weights, neurons, error, learningRate)
           val correct = correctPredictions(actual, predicted)
           (updated, batchLoss :+ loss, positives + correct)
       }
-    val avgLoss = getAvgLoss(l)
-    (w, transformAny[Float, T](avgLoss), positives)
+    val avgLoss = transformAny[Float, T](getAvgLoss(l))
+    (w, avgLoss, positives)
   }
 
   def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): Model[T] = {
@@ -333,9 +285,6 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U](
           )
           (w, losses :+ l)
       }
-    // println(s"losses count: ${epochLosses.length}")
-    // println(s"losses:\n${epochLosses.mkString("\n")}")
-
     copy(weights = updatedWeights, losses = epochLosses)
   }
 
@@ -343,31 +292,51 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U](
     if (weights == Nil) initialWeights(inputs) else weights
 }
 
-def prepareData() = {
-  //1,15634602,Hargrave,619,France,Female,42,2,0,1,1,1,101348.88,1 = length 14
-  val data = TextLoader(Path.of("data", "Churn_Modelling.csv")).load()
-  val y = data.col[Float](-1)
+def createEncoders[T: Numeric: ClassTag: TypeTag](    
+    data: Tensor2D[String]
+): (Tensor2D[String] => Tensor[T]) = {  
+  val encoder = LabelEncoder[String]().fit(data.col(2))
+  val hotEncoder = OneHotEncoder[String, T]().fit(data.col(1))
 
-  var xRaw = data.cols[String](3, -1)
-  val encoder = LabelEncoder[String]().fit(xRaw.col(2))
-  xRaw = encoder.transform(xRaw, 2)
-  val hotEncoder = OneHotEncoder[String, Float]().fit(xRaw.col(1))
-  xRaw = hotEncoder.transform(xRaw, 1)
-  val xFloat = transform[Float](xRaw.data)
+  val label = (x: Tensor2D[String]) => encoder.transform(x, 2)
+  val hot = (x: Tensor2D[String]) => hotEncoder.transform(x, 1)
+  val typeTransform = (x: Tensor2D[String]) => transform[T](x.data)
 
-  val scaler = StandardScaler[Float]().fit(xFloat)
-  val x = scaler.transform(xFloat)
-  (x, y)
+  label andThen hot andThen typeTransform  
 }
 
-val ann =
-  Sequential(mse, miniBatchGradientDescent, learningRate = 0.001f)
-    .add(Dense(6)(relu))
-    .add(Dense(6)(relu))
-    .add(Dense()(sigmoid))
+import optimizers._
 
-val (x, y) = prepareData()
+val ann =
+  Sequential[Float, MiniBatchGD](mse, learningRate = 0.001f)
+    .add(Dense(relu, 6))
+    .add(Dense(relu, 6))
+    .add(Dense(sigmoid))
+
+val dataLoader = TextLoader(Path.of("data", "Churn_Modelling.csv")).load()
+val data = dataLoader.cols[String](3, -1)
+
+val encs = createEncoders[Float](data)
+val numericData = encs(data)
+val scaler = StandardScaler[Float]().fit(numericData)
+
+val prepareData = (d: Tensor2D[String]) => {
+  val numericData = encs(d)
+  scaler.transform(numericData)
+}
+
+val x = prepareData(data)
+val y = dataLoader.col[Float](-1)
+
 val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
 
 val model = ann.train(xTrain, yTrain.as1D, epochs = 100)
-println("\nweights:\n\n" + model.currentWeights.mkString("\n\n"))
+// println("\nweights:\n\n" + model.currentWeights.mkString("\n\n"))
+
+// single test
+val example = TextLoader("n/a,n/a,n/a,600,France,Male,40,3,60000,2,1,1,50000,n/a").cols[String](3, -1)
+// println(example)
+val testExample = prepareData(example)
+// println(testExample)
+val exited = model.predict(testExample).as1D.data.head > 0.5
+println(s"Exited = " + exited)

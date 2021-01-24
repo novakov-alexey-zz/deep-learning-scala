@@ -173,15 +173,9 @@ object Tensor {
         Tensor2D(data.map(_.map(_ - data2)))
       case (Tensor1D(data), Tensor0D(data2)) =>
         Tensor1D(data.map(_ - data2))
-      case (t1 @ Tensor2D(data), t2 @ Tensor1D(data2)) =>
-        val cols = t1.cols
-        assert(
-          cols == data2.length,
-          s"trailing axis must have the same size, $cols != ${data2.length}"
-        )
+      case (t1 @ Tensor2D(data), t2 @ Tensor1D(data2)) =>        
         matrixSubstractVector(t1, t2)
-
-      case (t1, t2) => sys.error(s"Not implemented for\n$t1-\n$t2")
+      case (t1, t2) => sys.error(s"Not implemented for\n$t1 and\n$t2")
     }
 
   private def matrixSubstractVector[T: Numeric: ClassTag](
@@ -238,18 +232,14 @@ object Tensor {
         scalarMul(t, data)
       case (t, Tensor0D(data)) =>
         scalarMul(t, data)
-      case (Tensor1D(data), Tensor2D(data2)) => //TODO: add sizes validation
-        Tensor2D[T](matMul[T](asColumn(data), data2))
+      case (Tensor1D(data), Tensor2D(data2)) =>
+        Tensor2D(matMul(asColumn(data), data2))
       case (Tensor2D(data), Tensor1D(data2)) =>
-        Tensor2D[T](matMul[T](data, asColumn(data2)))
+        Tensor2D(matMul(data, asColumn(data2)))
       case (Tensor1D(data), Tensor1D(data2)) =>
-        Tensor1D[T](matMul[T](asColumn(data), Array(data2)).head)
-      case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>
-        assert(
-          t1.cols == t2.length,
-          s"The number of columns in the first matrix should be equal to the number of rows in the second, ${t1.cols} != ${t2.length}"
-        )
-        Tensor2D[T](matMul[T](data, data2))
+        Tensor1D(matMul(asColumn(data), Array(data2)).head)
+      case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>        
+        Tensor2D(matMul(data, data2))
     }
 
   private def asColumn[T: ClassTag](a: Array[T]) = a.map(Array(_))
@@ -274,8 +264,12 @@ object Tensor {
       a: Array[Array[T]],
       b: Array[Array[T]]
   ): Array[Array[T]] = {
+    assert(
+          a.head.length == b.length,
+          s"The number of columns in the first matrix should be equal to the number of rows in the second, ${a.head.length} != ${b.length}"
+        )
     val rows = a.length
-    val cols = b.headOption.map(_.length).getOrElse(0)
+    val cols = b.headOption.map(_.length).getOrElse(0)    
     val res = Array.ofDim[T](rows, cols)
 
     for (i <- (0 until rows).indices) {
@@ -318,6 +312,7 @@ object Tensor {
 
   def as2D[T: ClassTag](t: Tensor[T]): Tensor2D[T] =
     t match {
+      case Tensor0D(data) => Tensor2D(Array(Array(data)))
       case Tensor1D(data)   => Tensor2D(data.map(Array(_)))
       case t2 @ Tensor2D(_) => t2
     }
@@ -376,6 +371,7 @@ object Tensor {
     split(fraction, l) -> split(fraction, r)
   }
 
+
   def multiply[T: Numeric: ClassTag](
       t1: Tensor[T],
       t2: Tensor[T]
@@ -396,6 +392,7 @@ object Tensor {
           }
         }
         Tensor2D(sum)
+      case (a, b) => sys.error(s"Not implemented for: $a\n and\n $b")
     }
   }
 }
