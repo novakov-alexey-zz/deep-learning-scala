@@ -13,13 +13,13 @@ sealed trait Tensor[T] {
 
 case class Tensor0D[T: ClassTag](data: T) extends Tensor[T] {
   type A = T
-  override def length: Int = 0
-  override def sizes: List[Int] = Nil
+  override def length: Int = 1
+  override def sizes: List[Int] = 1 :: Nil
   override def toString: String = {
     val meta = s"sizes: ${sizes.head}, Tensor0D[${implicitly[ClassTag[T]]}]"
     s"$meta:\n" + data + "\n"
   }
-  override def cols: Int = 0
+  override def cols: Int = 1
 }
 
 case class Tensor1D[T: ClassTag](data: Array[T]) extends Tensor[T] {
@@ -101,7 +101,9 @@ object Tensor2D {
 }
 
 implicit class TensorOps[T: ClassTag: Numeric](val t: Tensor[T]) {
+  // dot product
   def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
+
   def map(f: T => T): Tensor[T] = Tensor.map(t, f)
   def -(that: T): Tensor[T] = Tensor.substract(t, Tensor0D(that))
   def -(that: Tensor[T]): Tensor[T] = Tensor.substract(t, that)
@@ -111,11 +113,15 @@ implicit class TensorOps[T: ClassTag: Numeric](val t: Tensor[T]) {
   def sum: T = Tensor.sum(t)
   def T: Tensor[T] = Tensor.transpose(t)
   def split(fraction: Float): (Tensor[T], Tensor[T]) = Tensor.split(fraction, t)
+  def multiply(that: Tensor[T]): Tensor[T] = Tensor.multiply(t, that)
 }
 
 implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T) {
+  // dot product
   def *(that: Tensor[T]): Tensor[T] = Tensor.mul(Tensor0D(t), that)
+
   def -(that: Tensor[T]): Tensor[T] = Tensor.substract(Tensor0D(t), that)
+  def as0D: Tensor0D[T] = Tensor0D(t)
 }
 
 implicit class TensorArrayOps[T: ClassTag: Numeric](val t: Array[Tensor[T]]) {
@@ -149,20 +155,47 @@ object Tensor {
       case (Tensor1D(data), Tensor1D(data2)) =>
         val res = data.zip(data2).map { case (a, b) => a - b }
         Tensor1D(res)
+      case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>
+        val (rows, cols) = t1.sizes2D
+        val (rows2, cols2) = t2.sizes2D
+        assert(
+          rows == rows2 && cols == cols2,
+          s"Matrices must have the same amount of rows and size, ${(rows, cols)} ! = ${(rows2, cols2)}"
+        )
+        val res = Array.ofDim[T](rows, cols)
+        for (i <- data.indices) {
+          for (j <- 0 until cols) {
+            res(i)(j) = data(i)(j) - data2(i)(j)
+          }
+        }
+        Tensor2D(res)
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ - data2)))
       case (Tensor1D(data), Tensor0D(data2)) =>
         Tensor1D(data.map(_ - data2))
-      case (t1 @ Tensor2D(data), Tensor1D(data2)) =>
+      case (t1 @ Tensor2D(data), t2 @ Tensor1D(data2)) =>
         val cols = t1.cols
         assert(
           cols == data2.length,
           s"trailing axis must have the same size, $cols != ${data2.length}"
         )
-        val res = data.map(_.zip(data2).map { case (a, b) => a - b })
-        Tensor2D(res)
-      case (t1, t2) => sys.error(s"Not implemented for $t1 x $t2")
+        matrixSubstractVector(t1, t2)
+
+      case (t1, t2) => sys.error(s"Not implemented for\n$t1-\n$t2")
     }
+
+  private def matrixSubstractVector[T: Numeric: ClassTag](
+      matrix: Tensor2D[T],
+      vector: Tensor1D[T]
+  ) = {
+    val cols = matrix.cols
+    assert(
+      cols == vector.length,
+      s"trailing axis must have the same size, $cols != ${vector.length}"
+    )
+    val res = matrix.data.map(_.zip(vector.data).map { case (a, b) => a - b })
+    Tensor2D(res)
+  }
 
   def plus[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match {
@@ -171,9 +204,9 @@ object Tensor {
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ + data2)))
       case (t1 @ Tensor2D(data), t2 @ Tensor1D(data2)) =>
-        plus(t1, t2)
+        matrixPlusVector(t1, t2)
       case (t1 @ Tensor1D(_), t2 @ Tensor2D(_)) =>
-        plus(t2, t1)
+        matrixPlusVector(t2, t1)
       case (Tensor1D(data), Tensor0D(data2)) =>
         Tensor1D(data.map(_ + data2))
       case (Tensor0D(data), Tensor1D(data2)) =>
@@ -181,18 +214,20 @@ object Tensor {
       case _ => sys.error(s"Not implemented for:\n$a\nand\n$b!")
     }
 
-  private def plus[T: ClassTag: Numeric](t1: Tensor2D[T], t2: Tensor1D[T]) = {
+  private def matrixPlusVector[T: ClassTag: Numeric](
+      t1: Tensor2D[T],
+      t2: Tensor1D[T]
+  ) = {
     val (rows, cols) = t1.sizes2D
     assert(
-      rows == t2.length,
-      s"tensors must have the same amount of rows to sum them up element-wise, but were: $rows != ${t2.length}"
+      cols == t2.length,
+      s"tensors must have the same amount of cols to sum them up element-wise, but were: $cols != ${t2.length}"
     )
     val sum = Array.ofDim[T](rows, cols)
     for (i <- (0 until rows)) {
       for (j <- (0 until cols)) {
-        sum(i)(j) = t1.data(i)(j) + t2.data(i)
+        sum(i)(j) = t1.data(i)(j) + t2.data(j)
       }
-
     }
     Tensor2D(sum)
   }
@@ -212,7 +247,7 @@ object Tensor {
       case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>
         assert(
           t1.cols == t2.length,
-          "The number of columns in the first matrix should be equal to the number of rows in the second"
+          s"The number of columns in the first matrix should be equal to the number of rows in the second, ${t1.cols} != ${t2.length}"
         )
         Tensor2D[T](matMul[T](data, data2))
     }
@@ -328,7 +363,7 @@ object Tensor {
       data: Array[T]
   ): (Array[T], Array[T]) = {
     val count = data.length * fraction
-    val countOrZero = if (count < 1) 0 else count    
+    val countOrZero = if (count < 1) 0 else count
     data.splitAt(data.length - countOrZero.toInt)
   }
 
@@ -340,14 +375,39 @@ object Tensor {
     assert(l.length == r.length, "Both tensors must have the same size")
     split(fraction, l) -> split(fraction, r)
   }
+
+  def multiply[T: Numeric: ClassTag](
+      t1: Tensor[T],
+      t2: Tensor[T]
+  ): Tensor[T] = {
+    assert(
+      t1.length == t2.length,
+      s"Both vectors must have the same length, ${t1.length} != ${t2.length}"
+    )
+    (t1, t2) match {
+      case (Tensor1D(data), Tensor1D(data2)) =>
+        Tensor1D(data.zip(data2).map { case (a, b) => a * b })
+      case (a @ Tensor2D(data), Tensor2D(data2)) =>
+        val (rows, cols) = a.sizes2D
+        val sum = Array.ofDim[T](rows, cols)
+        for (i <- 0 until rows) {
+          for (j <- 0 until cols) {
+            sum(i)(j) = data(i)(j) * data2(i)(j)
+          }
+        }
+        Tensor2D(sum)
+    }
+  }
 }
 
 trait RandomGen[T] {
   def gen: T
 }
 
-implicit val randomUniform: RandomGen[Float] = new RandomGen[Float] {
-  def gen: Float = math.random().toFloat + 0.001f
+object randoms {
+  implicit val uniform: RandomGen[Float] = new RandomGen[Float] {
+    def gen: Float = math.random().toFloat + 0.001f
+  }
 }
 
 def random2D[T: ClassTag](rows: Int, cols: Int)(implicit

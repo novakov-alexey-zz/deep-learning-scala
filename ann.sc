@@ -10,27 +10,38 @@ import loader._
 import tensor._
 import encoders._
 import converter._
+import tensor.randoms.uniform
 
 import java.nio.file.Path
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe.TypeTag
 import scala.collection.mutable.ArrayBuffer
+
 sealed trait Activation[T] extends (Tensor[T] => Tensor[T]) {
   def apply(x: Tensor[T]): Tensor[T]
+  def derivative(x: Tensor[T]): Tensor[T]
 }
 
-trait Relu[T] extends Activation[T]
-trait Sigmoid[T] extends Activation[T]
+implicit val relu = new Activation[Float] {
 
-implicit val relu = new Relu[Float] {
+  override def derivative(x: tensor.Tensor[Float]): tensor.Tensor[Float] =
+    Tensor.map(x, t => if (t < 0) 0 else 1)
+
   override def apply(x: Tensor[Float]): Tensor[Float] =
     Tensor.map(x, t => math.max(0, t))
 }
 
-implicit val sigmoid = new Sigmoid[Float] {
+implicit val sigmoid = new Activation[Float] {
+
   override def apply(x: Tensor[Float]): Tensor[Float] =
     Tensor.map(x, t => 1 / (1 + math.exp(-t).toFloat))
+
+  override def derivative(x: Tensor[Float]): Tensor[Float] =
+    Tensor.map(
+      x,
+      t => math.exp(-t).toFloat / math.pow(1 + math.exp(-t).toFloat, 2).toFloat
+    )
 }
 
 sealed trait Gradient[T] {
@@ -68,8 +79,8 @@ implicit val mse = new Loss[Float] {
       error: Tensor[Float]
   ): Delta = {
     // println(s"samples = ${error.length}")
-    // println(s"x = ${x}")
-    // println(s"error = $error")
+    println(s"x = ${x}")
+    println(s"error = $error")
     val n = 1f / error.length
     val weightGradient = n * (x * error)
     val biasGradient = n * error
@@ -173,7 +184,7 @@ case class Neuron[T](
     a: Tensor[T]
 ) //TODO: add error property for backpropagation
 
-case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
+case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U](
     lossFunc: Loss[T],
     optimizer: Optimizer[T],
     learningRate: T,
@@ -196,7 +207,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
     val (weights, _) =
       layers.foldLeft(List.empty[Weight[T]], inputs) {
         case ((acc, inputs), layer) =>
-          val w = random2D(layer.units, inputs)
+          val w = random2D(inputs, layer.units)
           val b = zeros(layer.units)
           (acc :+ Weight(w, b, layer.f), layer.units)
       }
@@ -208,13 +219,13 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
       weights: List[Weight[T]]
   ): Array[Neuron[T]] =
     weights
-      .foldLeft(input.T, ArrayBuffer.empty[Neuron[T]]) {
+      .foldLeft(input, ArrayBuffer.empty[Neuron[T]]) {
         case ((x, acc), Weight(w, b, activation)) =>
           // println(s"w = $w")
           // println(s"x = ${x}")
           // println(s"b = $b")
-          // println(s"res = ${w * x}")
-          val z = (w * x) + b
+          // println(s"res = ${x * w}")
+          val z = (x * w) + b
           // println(s"res2 = $z")
           val a = activation(z)
           (a, acc :+ Neuron(x, z, a))
@@ -227,27 +238,41 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
       activations: Array[Neuron[T]],
       error: Tensor[T]
   ) = {
-    // println(s"weights.size = ${weights.length}")
-    // println(s"activations.size = ${activations.length}")
+    // println(s"initial error = ${error}")
+    weights
+      .zip(activations)
+      .foldRight(
+        List.empty[Weight[T]],
+        error,
+        None: Option[Tensor[T]]
+      ) {
+        case (
+              (Weight(w, b, actFunc), neuron),
+              (ws, prevDelta, prevWeight)
+            ) =>
+          // println(s"prevDelta = $prevDelta")
+          // println(s"prevWeight = $prevWeight")
+          // println(s"z.T = ${neuron.z.T}")
+          // println(s"w = $w")
+          val delta = prevWeight match {
+            case Some(pw) =>
+              (prevDelta * pw.T) multiply actFunc.derivative(neuron.z)
+            case None => prevDelta
+          }
+          // println(s"delta = $delta")
+          // println(s"neuron.x.T = ${neuron.x.T}")
 
-    def batchGradient(layer: Int): (T, T) = {
-      val x = activations(layer).x
-      val (wg, bg) = lossFunc.gradient(x, error)
-      wg.sum -> bg.sum
-    }
-
-    weights.zipWithIndex.foldLeft(List.empty[Weight[T]]) {
-      case (acc, (Weight(w, b, actFunc), i)) =>
-        val (wGradient, bGradient) = batchGradient(i)
-        // println(s"wGradient = $wGradient")
-        // println(s"w = $w")
-        // println(s"b = $b")
-        val newWeight = w - (learningRate * wGradient)
-        val newBias = b - (learningRate * bGradient)
-        // println(s"newWeight = $newWeight")
-        // println(s"newBias = $newBias")
-        acc :+ Weight(newWeight, newBias, actFunc)
-    }
+          val wPartialDerivative = neuron.x.T * delta
+          // println(s"wPartialDerivative = $wPartialDerivative")
+          // println(s"b = $b")
+          val newWeight = w - (learningRate * wPartialDerivative)
+          // println(s"newWeight = $newWeight")
+          val newBias = b - (learningRate * delta.sum)
+          // println(s"newBias = $newBias")
+          val updated = Weight(newWeight, newBias, actFunc) +: ws
+          (updated, delta, Some(w))
+      }
+      ._1
   }
 
   private def correctPredictions(
@@ -280,7 +305,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag](
             // println(s"actual = $actual")
           }
           val error = predicted - actual
-          // if (epoch % 20 == 0) println(s"error = $error")
+          //println(s"error = $error")
           val loss = lossFunc(actual, predicted)
           // println(s"loss = $loss")
           // backward
