@@ -1,16 +1,9 @@
-// scala 2.13.3
-
-import $file.tensor
-import $file.converter
-
-import tensor._
-import converter._
-
-import reflect.runtime.universe._
+import converter.{transform, transformArr}
 
 import java.nio.file.Path
 import scala.io.Source
 import scala.reflect.ClassTag
+import scala.reflect.runtime.universe._
 import scala.util.Using
 
 object TextLoader {

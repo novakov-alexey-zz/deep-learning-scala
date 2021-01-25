@@ -1,5 +1,3 @@
-// scala 2.13.3
-
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
 
@@ -100,47 +98,55 @@ object Tensor2D {
   }
 }
 
-implicit class TensorOps[T: ClassTag: Numeric](val t: Tensor[T]) {
-  // dot product
-  def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
+object ops {
 
-  def map(f: T => T): Tensor[T] = Tensor.map(t, f)
-  def -(that: T): Tensor[T] = Tensor.substract(t, Tensor0D(that))
-  def -(that: Tensor[T]): Tensor[T] = Tensor.substract(t, that)
-  def +(that: Tensor[T]): Tensor[T] = Tensor.plus(t, that)
-  def as1D: Tensor1D[T] = Tensor.as1D(t)
-  def as2D: Tensor2D[T] = Tensor.as2D(t)
-  def sum: T = Tensor.sum(t)
-  def T: Tensor[T] = Tensor.transpose(t)
-  def split(fraction: Float): (Tensor[T], Tensor[T]) = Tensor.split(fraction, t)
-  def multiply(that: Tensor[T]): Tensor[T] = Tensor.multiply(t, that)
-}
+  implicit class TensorOps[T: ClassTag: Numeric](val t: Tensor[T]) {
+    // dot product
+    def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
 
-implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T) {
-  // dot product
-  def *(that: Tensor[T]): Tensor[T] = Tensor.mul(Tensor0D(t), that)
+    def map[U: ClassTag](f: T => U): Tensor[U] = Tensor.map[T, U](t, f)
+    def -(that: T): Tensor[T] = Tensor.substract(t, Tensor0D(that))
+    def -(that: Tensor[T]): Tensor[T] = Tensor.substract(t, that)
+    def +(that: Tensor[T]): Tensor[T] = Tensor.plus(t, that)
+    def as1D: Tensor1D[T] = Tensor.as1D(t)
+    def as2D: Tensor2D[T] = Tensor.as2D(t)
+    def sum: T = Tensor.sum(t)
+    def T: Tensor[T] = Tensor.transpose(t)
+    def split(fraction: Float): (Tensor[T], Tensor[T]) = Tensor.split(fraction, t)
+    def multiply(that: Tensor[T]): Tensor[T] = Tensor.multiply(t, that)
+  }
 
-  def -(that: Tensor[T]): Tensor[T] = Tensor.substract(Tensor0D(t), that)
-  def as0D: Tensor0D[T] = Tensor0D(t)
-}
+  implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T) {
+    // dot product
+    def *(that: Tensor[T]): Tensor[T] = Tensor.mul(Tensor0D(t), that)
 
-implicit class TensorArrayOps[T: ClassTag: Numeric](val t: Array[Tensor[T]]) {
-  def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)
-}
+    def -(that: Tensor[T]): Tensor[T] = Tensor.substract(Tensor0D(t), that)
 
-implicit class TensorListOps[T: ClassTag: Numeric](val t: List[Tensor[T]]) {
-  def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)
-}
-implicit class TensorTupleOps[T: ClassTag: Numeric](
-    val pair: (Tensor[T], Tensor[T])
-) {
-  def split(fraction: Float): ((Tensor[T], Tensor[T]), (Tensor[T], Tensor[T])) =
-    Tensor.splitPair(fraction, pair)
-}
+    def as0D: Tensor0D[T] = Tensor0D(t)
+  }
 
-implicit class Tensor2DOps[T: ClassTag](val t: Tensor2D[T]) {
-  def col(i: Int): Tensor1D[T] = Tensor1D(Tensor2D.col(t.data, i))
-  def T: Tensor2D[T] = Tensor.transpose(t).asInstanceOf[Tensor2D[T]]
+  implicit class TensorArrayOps[T: ClassTag: Numeric](val t: Array[Tensor[T]]) {
+    def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)
+  }
+
+  implicit class TensorListOps[T: ClassTag: Numeric](val t: List[Tensor[T]]) {
+    def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)
+  }
+
+  implicit class TensorTupleOps[T: ClassTag: Numeric](
+      val pair: (Tensor[T], Tensor[T])
+  ) {
+    def split(
+        fraction: Float
+    ): ((Tensor[T], Tensor[T]), (Tensor[T], Tensor[T])) =
+      Tensor.splitPair(fraction, pair)
+  }
+
+  implicit class Tensor2DOps[T: ClassTag](val t: Tensor2D[T]) {
+    def col(i: Int): Tensor1D[T] = Tensor1D(Tensor2D.col(t.data, i))
+
+    def T: Tensor2D[T] = Tensor.transpose(t).asInstanceOf[Tensor2D[T]]
+  }
 }
 
 object Tensor {
@@ -173,7 +179,7 @@ object Tensor {
         Tensor2D(data.map(_.map(_ - data2)))
       case (Tensor1D(data), Tensor0D(data2)) =>
         Tensor1D(data.map(_ - data2))
-      case (t1 @ Tensor2D(data), t2 @ Tensor1D(data2)) =>        
+      case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) =>
         matrixSubstractVector(t1, t2)
       case (t1, t2) => sys.error(s"Not implemented for\n$t1 and\n$t2")
     }
@@ -218,8 +224,8 @@ object Tensor {
       s"tensors must have the same amount of cols to sum them up element-wise, but were: $cols != ${t2.length}"
     )
     val sum = Array.ofDim[T](rows, cols)
-    for (i <- (0 until rows)) {
-      for (j <- (0 until cols)) {
+    for (i <- 0 until rows) {
+      for (j <- 0 until cols) {
         sum(i)(j) = t1.data(i)(j) + t2.data(j)
       }
     }
@@ -238,13 +244,13 @@ object Tensor {
         Tensor2D(matMul(data, asColumn(data2)))
       case (Tensor1D(data), Tensor1D(data2)) =>
         Tensor1D(matMul(asColumn(data), Array(data2)).head)
-      case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>        
+      case (Tensor2D(data), Tensor2D(data2)) =>
         Tensor2D(matMul(data, data2))
     }
 
   private def asColumn[T: ClassTag](a: Array[T]) = a.map(Array(_))
 
-  def map[T: ClassTag](t: Tensor[T], f: T => T): Tensor[T] =
+  def map[T: ClassTag, U: ClassTag](t: Tensor[T], f: T => U): Tensor[U] =
     t match {
       case Tensor1D(data) => Tensor1D(data.map(f(_)))
       case Tensor2D(data) => Tensor2D(data.map(d => d.map(f(_))))
@@ -265,11 +271,11 @@ object Tensor {
       b: Array[Array[T]]
   ): Array[Array[T]] = {
     assert(
-          a.head.length == b.length,
-          s"The number of columns in the first matrix should be equal to the number of rows in the second, ${a.head.length} != ${b.length}"
-        )
+      a.head.length == b.length,
+      s"The number of columns in the first matrix should be equal to the number of rows in the second, ${a.head.length} != ${b.length}"
+    )
     val rows = a.length
-    val cols = b.headOption.map(_.length).getOrElse(0)    
+    val cols = b.headOption.map(_.length).getOrElse(0)
     val res = Array.ofDim[T](rows, cols)
 
     for (i <- (0 until rows).indices) {
@@ -312,7 +318,7 @@ object Tensor {
 
   def as2D[T: ClassTag](t: Tensor[T]): Tensor2D[T] =
     t match {
-      case Tensor0D(data) => Tensor2D(Array(Array(data)))
+      case Tensor0D(data)   => Tensor2D(Array(Array(data)))
       case Tensor1D(data)   => Tensor2D(data.map(Array(_)))
       case t2 @ Tensor2D(_) => t2
     }
@@ -371,7 +377,6 @@ object Tensor {
     split(fraction, l) -> split(fraction, r)
   }
 
-
   def multiply[T: Numeric: ClassTag](
       t1: Tensor[T],
       t2: Tensor[T]
@@ -397,6 +402,21 @@ object Tensor {
   }
 }
 
+object RandomGen {
+
+  def random2D[T: ClassTag](rows: Int, cols: Int)(implicit
+      rng: RandomGen[T]
+  ): Tensor2D[T] = {
+    val rnd = implicitly[RandomGen[T]]
+    Tensor2D(Array.fill(rows)(Array.fill[T](cols)(rnd.gen)))
+  }
+
+  def zeros[T: Numeric: ClassTag](length: Int): Tensor1D[T] = {
+    val zero = implicitly[Numeric[T]].zero
+    Tensor1D(Array.fill(length)(zero))
+  }
+}
+
 trait RandomGen[T] {
   def gen: T
 }
@@ -405,16 +425,4 @@ object randoms {
   implicit val uniform: RandomGen[Float] = new RandomGen[Float] {
     def gen: Float = math.random().toFloat + 0.001f
   }
-}
-
-def random2D[T: ClassTag](rows: Int, cols: Int)(implicit
-    rng: RandomGen[T]
-): Tensor2D[T] = {
-  val rnd = implicitly[RandomGen[T]]
-  Tensor2D(Array.fill(rows)(Array.fill[T](cols)(rnd.gen)))
-}
-
-def zeros[T: Numeric: ClassTag](length: Int): Tensor1D[T] = {
-  val zero = implicitly[Numeric[T]].zero
-  Tensor1D(Array.fill(length)(zero))
 }

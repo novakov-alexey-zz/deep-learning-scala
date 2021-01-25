@@ -1,13 +1,10 @@
-// scala 2.13.3
-
-import $file.tensor
-import $file.converter
-import tensor._
-import converter._
 
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 import Encoder._
+import converter.transformAny
+import ops._
+
 import scala.collection.mutable.ArrayBuffer
 
 object Encoder {
@@ -41,7 +38,7 @@ case class OneHotEncoder[
     classes: Map[T, U] = Map.empty[T, U],
     noFound: Int = -1
 ) {
-  def fit(samples: Tensor1D[T]) =
+  def fit(samples: Tensor1D[T]): OneHotEncoder[T, U] =
     OneHotEncoder[T, U](toClasses[T, U](samples))
 
   def transform(t: Tensor2D[T], col: Int): Tensor2D[T] = {
