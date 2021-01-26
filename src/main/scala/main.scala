@@ -28,7 +28,7 @@ object main extends App {
 
   val ann =
     Sequential[Float, MiniBatchGD](
-      mse,
+      meanSquaredError,
       learningRate = 0.001f,
       metric = accuracy
     )

@@ -44,7 +44,7 @@ sealed trait Loss[T] {
 }
 
 object Loss {
-  implicit val mse: Loss[Float] = new Loss[Float] {
+  implicit val meanSquaredError: Loss[Float] = new Loss[Float] {
     override def apply(
         actual: Tensor1D[Float],
         predicted: Tensor1D[Float]
@@ -300,7 +300,8 @@ trait Metric[T] {
 }
 
 object Metric {
-  val predictedToBinary: Float => Int = (v: Float) => if (v > 0.5) 1 else 0
+  def predictedToBinary[T: Numeric](v: T): Byte =
+    if (implicitly[Numeric[T]].toDouble(v) > 0.5) 1 else 0
 
   def accuracyMetric[T: Numeric]: Metric[T] = new Metric[T] {
     val name = "accuracy"
@@ -310,7 +311,7 @@ object Metric {
         predicted: Tensor1D[T]
     ): Int =
       actual.data.zip(predicted.data).foldLeft(0) { case (acc, (y, yhat)) =>
-        val normalized = predictedToBinary(yhat.toFloat)
+        val normalized = predictedToBinary(yhat)
         acc + (if (y == implicitly[Numeric[T]].fromInt(normalized)) 1 else 0)
       }
 

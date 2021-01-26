@@ -76,7 +76,7 @@ case class StandardScaler[T: Numeric: TypeTag: ClassTag](
         StandardScaler(Array(fitColumn(data)))
       case t @ Tensor2D(_) =>
         StandardScaler(t.T.data.map(fitColumn))
-      case Tensor1D(_) => StandardScaler()
+      case Tensor0D(_) => StandardScaler()
     }
   }
 
@@ -109,7 +109,7 @@ case class StandardScaler[T: Numeric: TypeTag: ClassTag](
           }
         }
         Tensor2D(res)
-      case Tensor0D(_) => t
+      case Tensor0D(_) => t // scaling is not possible for scalar tensor
     }
   }
 

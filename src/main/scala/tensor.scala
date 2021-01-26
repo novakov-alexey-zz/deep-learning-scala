@@ -112,7 +112,8 @@ object ops {
     def as2D: Tensor2D[T] = Tensor.as2D(t)
     def sum: T = Tensor.sum(t)
     def T: Tensor[T] = Tensor.transpose(t)
-    def split(fraction: Float): (Tensor[T], Tensor[T]) = Tensor.split(fraction, t)
+    def split(fraction: Float): (Tensor[T], Tensor[T]) =
+      Tensor.split(fraction, t)
     def multiply(that: Tensor[T]): Tensor[T] = Tensor.multiply(t, that)
   }
 
@@ -252,6 +253,7 @@ object Tensor {
 
   def map[T: ClassTag, U: ClassTag](t: Tensor[T], f: T => U): Tensor[U] =
     t match {
+      case Tensor0D(data) => Tensor0D(f(data))
       case Tensor1D(data) => Tensor1D(data.map(f(_)))
       case Tensor2D(data) => Tensor2D(data.map(d => d.map(f(_))))
     }
@@ -301,9 +303,15 @@ object Tensor {
 
   def combineAs1D[T: ClassTag](a: Tensor[T], b: Tensor[T]): Tensor1D[T] =
     (a, b) match {
+      case (Tensor1D(data), Tensor0D(data2))    => Tensor1D(data :+ data2)
+      case (Tensor0D(data), Tensor0D(data2))    => Tensor1D(Array(data, data2))
+      case (Tensor0D(data), Tensor1D(data2))    => Tensor1D(data +: data2)
+      case (Tensor0D(data), Tensor2D(data2))    => Tensor1D(data +: data2.flatten)
       case (t1 @ Tensor1D(_), t2 @ Tensor1D(_)) => combine(t1, t2)
       case (t1 @ Tensor1D(_), Tensor2D(data2)) =>
         combine(t1, Tensor1D(data2.flatten))
+      case (Tensor2D(data), t2 @ Tensor0D(data2)) =>
+        Tensor1D(data.flatten :+ data2)
       case (Tensor2D(data), t2 @ Tensor1D(_)) =>
         combine(Tensor1D(data.flatten), t2)
       case (Tensor2D(data), Tensor2D(data2)) =>
@@ -312,6 +320,7 @@ object Tensor {
 
   def as1D[T: ClassTag](t: Tensor[T]): Tensor1D[T] =
     t match {
+      case Tensor0D(data)   => Tensor1D(data)
       case t1 @ Tensor1D(_) => t1
       case Tensor2D(data)   => Tensor1D(data.flatten)
     }
