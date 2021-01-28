@@ -6,7 +6,7 @@ import ops._
 import optimizers._
 import randoms.uniform
 
-import java.nio.file.Path
+import java.nio.file.Paths
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe.TypeTag
 
@@ -36,7 +36,7 @@ object main extends App {
       .add(Dense(relu, 6))
       .add(Dense(sigmoid))
 
-  val dataLoader = TextLoader(Path.of("data", "Churn_Modelling.csv")).load()
+  val dataLoader = TextLoader(Paths.get("data", "Churn_Modelling.csv")).load()
   val data = dataLoader.cols[String](3, -1)
 
   val encoders = createEncoders[Float](data)

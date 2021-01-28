@@ -1,6 +1,5 @@
-
 import scala.reflect.ClassTag
-import scala.reflect.runtime.universe._
+import scala.reflect.runtime.universe.{TypeTag, typeOf}
 
 object converter {
 

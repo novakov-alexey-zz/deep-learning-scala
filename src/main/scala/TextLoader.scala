@@ -1,9 +1,10 @@
 import converter.{transform, transformArr}
 
+import java.io.File
 import java.nio.file.Path
 import scala.io.Source
 import scala.reflect.ClassTag
-import scala.reflect.runtime.universe._
+import scala.reflect.runtime.universe.TypeTag
 import scala.util.Using
 
 object TextLoader {
@@ -15,7 +16,7 @@ object TextLoader {
 }
 
 case class TextLoader(
-    path: Path = Path.of("data.csv"),
+    path: Path = new File("data.csv").toPath,
     header: Boolean = true,
     delimiter: String = TextLoader.defaultDelimiter,
     data: Array[Array[String]] = Array.empty[Array[String]]

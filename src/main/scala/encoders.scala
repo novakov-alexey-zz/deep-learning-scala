@@ -1,11 +1,10 @@
-
-import scala.reflect.ClassTag
-import scala.reflect.runtime.universe._
 import Encoder._
 import converter.transformAny
 import ops._
 
 import scala.collection.mutable.ArrayBuffer
+import scala.reflect.ClassTag
+import scala.reflect.runtime.universe.TypeTag
 
 object Encoder {
   def toClasses[T: TypeTag: Ordering, U: TypeTag](
@@ -36,7 +35,7 @@ case class OneHotEncoder[
     U: TypeTag: Numeric: Ordering
 ](
     classes: Map[T, U] = Map.empty[T, U],
-    noFound: Int = -1
+    notFound: Int = -1
 ) {
   def fit(samples: Tensor1D[T]): OneHotEncoder[T, U] =
     OneHotEncoder[T, U](toClasses[T, U](samples))
@@ -54,7 +53,7 @@ case class OneHotEncoder[
               case Some(p) =>
                 array(numeric.toInt(p)) = transformAny[U, T](numeric.one)
               case None =>
-                array(0) = transformAny[U, T](numeric.fromInt(noFound))
+                array(0) = transformAny[U, T](numeric.fromInt(notFound))
             }
             acc ++ array
           } else acc :+ d
@@ -92,7 +91,9 @@ case class StandardScaler[T: Numeric: TypeTag: ClassTag](
   def transform(t: Tensor[T]): Tensor[T] = {
     t match {
       case Tensor1D(data) =>
-        val stat = stats(0)
+        val stat = stats.headOption.getOrElse(
+          sys.error(s"There is no statistics for $t")
+        )
         val res = data.map(n =>
           transformAny[Double, T](scale(transformAny[T, Double](n), stat))
         )
@@ -109,7 +110,7 @@ case class StandardScaler[T: Numeric: TypeTag: ClassTag](
           }
         }
         Tensor2D(res)
-      case Tensor0D(_) => t // scaling is not possible for scalar tensor
+      case Tensor0D(_) => t // scaling is not applicable for scalar tensor
     }
   }
 

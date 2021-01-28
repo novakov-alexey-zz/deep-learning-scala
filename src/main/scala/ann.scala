@@ -1,5 +1,6 @@
 import Model.{batchColumn, batches, getAvgLoss}
 import RandomGen._
+import Sequential._
 import converter.transformAny
 import ops._
 
@@ -61,17 +62,7 @@ object Loss {
   }
 
   implicit val binaryCrossEntropy: Loss[Float] = new Loss[Float] {
-    /*
-  TODO: implement second case for multi-class prediction
-
-  def categorical_cross_entropy(actual, predicted):
-    sum_score = 0.0
-    for i in range(len(actual)):
-      for j in range(len(actual[i])):
-        sum_score += actual[i][j] * log(1e-15 + predicted[i][j])
-    mean_sum_score = 1.0 / len(actual) * sum_score
-    return -mean_sum_score
-     */
+    
     override def apply(
         actual: Tensor1D[Float],
         predicted: Tensor1D[Float]
@@ -191,6 +182,33 @@ case class Neuron[T](
     a: Tensor[T]
 )
 
+object Sequential {
+  def activate[T: Numeric: ClassTag](
+      input: Tensor[T],
+      weights: List[Weight[T]]
+  ): List[Neuron[T]] =
+    weights
+      .foldLeft(input, ArrayBuffer.empty[Neuron[T]]) {
+        case ((x, acc), Weight(w, b, activation)) =>
+          val z = x * w + b
+          val a = activation(z)
+          (a, acc :+ Neuron(x, z, a))
+      }
+      ._2
+      .toList
+
+  def initialWeights[T: RandomGen: Numeric: ClassTag](
+      layers: List[Layer[T]],
+      inputs: Int
+  ): List[Weight[T]] =
+    layers
+      .foldLeft(List.empty[Weight[T]], inputs) { case ((acc, inputs), layer) =>
+        val w = random2D(inputs, layer.units)
+        val b = zeros(layer.units)
+        (acc :+ Weight(w, b, layer.f), layer.units)
+      }
+      ._1
+}
 case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U: Optimizer](
     lossFunc: Loss[T],
     learningRate: T,
@@ -204,33 +222,11 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U: Optimizer](
   def currentWeights: List[(Tensor[T], Tensor[T])] =
     weights.map(w => w.w -> w.b)
 
-  def predict(x: Tensor[T]): Tensor[T] = activate(x, weights).last.a
+  def predict(x: Tensor[T]): Tensor[T] =
+    activate(x, weights).last.a
 
   def add(l: Layer[T]): Sequential[T, U] =
     copy(layers = layers :+ l)
-
-  def initialWeights(inputs: Int): List[Weight[T]] =
-    layers
-      .foldLeft(List.empty[Weight[T]], inputs) { case ((acc, inputs), layer) =>
-        val w = random2D(inputs, layer.units)
-        val b = zeros(layer.units)
-        (acc :+ Weight(w, b, layer.f), layer.units)
-      }
-      ._1
-
-  private def activate(
-      input: Tensor[T],
-      weights: List[Weight[T]]
-  ): List[Neuron[T]] =
-    weights
-      .foldLeft(input, ArrayBuffer.empty[Neuron[T]]) {
-        case ((x, acc), Weight(w, b, activation)) =>
-          val z = (x * w) + b
-          val a = activation(z)
-          (a, acc :+ Neuron(x, z, a))
-      }
-      ._2
-      .toList
 
   private def trainEpoch(
       xBatches: List[(Array[Array[T]], Array[T])],
@@ -261,11 +257,11 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U: Optimizer](
   }
 
   def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): Model[T] = {
-    val inputs = x.cols
+    lazy val inputs = x.cols
     lazy val actualBatches = batchColumn(y, batchSize).toArray
     lazy val xBatches = batches(x, batchSize).zip(actualBatches).toList
+    lazy val w = getWeights(inputs)
 
-    val w = getWeights(inputs)
     val (updatedWeights, epochLosses) =
       (0 until epochs).foldLeft((w, List.empty[T])) {
         case ((weights, losses), epoch) =>
@@ -280,7 +276,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U: Optimizer](
   }
 
   private def getWeights(inputs: Int) =
-    if (weights == Nil) initialWeights(inputs) else weights
+    if (weights == Nil) initialWeights(layers, inputs) else weights
 }
 
 trait Metric[T] {
@@ -315,6 +311,7 @@ object Metric {
         acc + (if (y == implicitly[Numeric[T]].fromInt(normalized)) 1 else 0)
       }
 
-    def result(count: Int, correct: Int): Double = correct.toDouble / count
+    def result(count: Int, correct: Int): Double =
+      correct.toDouble / count
   }
 }
