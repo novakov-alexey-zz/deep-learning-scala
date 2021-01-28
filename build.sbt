@@ -14,4 +14,4 @@ lazy val root = (project in file("."))
     name := "ann",
     libraryDependencies ++=
       Seq(scalaTest % Test, scalaReflect.value)
-  )
+  ).enablePlugins(ScalaNativePlugin)
