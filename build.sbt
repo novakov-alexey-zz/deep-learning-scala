@@ -13,12 +13,11 @@ lazy val root = (project in file("."))
     libraryDependencies ++=
       Seq(scalaTest % Test)
   )
-  .enablePlugins(ScalaNativePlugin)
+//  .enablePlugins(ScalaNativePlugin)
 
-import scala.scalanative.build._
-
-nativeConfig ~= {
-  _.withLTO(LTO.thin)
-    .withMode(Mode.releaseFull)
-    .withGC(GC.immix)
-}
+//import scala.scalanative.build._
+//nativeConfig ~= {
+//  _.withLTO(LTO.thin)
+//    .withMode(Mode.releaseFull)
+//    .withGC(GC.immix)
+//}
