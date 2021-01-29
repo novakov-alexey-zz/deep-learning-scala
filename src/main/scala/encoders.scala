@@ -4,17 +4,16 @@ import ops._
 
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
-import scala.reflect.runtime.universe.TypeTag
 
 object Encoder {
-  def toClasses[T: TypeTag: Ordering, U: TypeTag](
+  def toClasses[T: ClassTag: Ordering, U: ClassTag](
       samples: Tensor1D[T]
   ): Map[T, U] =
     samples.data.distinct.sorted.zipWithIndex.toMap.view
       .mapValues(transformAny[Int, U])
       .toMap[T, U]
 }
-case class LabelEncoder[T: ClassTag: Ordering: TypeTag](
+case class LabelEncoder[T: ClassTag: Ordering](
     classes: Map[T, T] = Map.empty[T, T]
 ) {
   def fit(samples: Tensor1D[T]): LabelEncoder[T] =
@@ -31,8 +30,8 @@ case class LabelEncoder[T: ClassTag: Ordering: TypeTag](
 }
 
 case class OneHotEncoder[
-    T: Ordering: TypeTag: ClassTag,
-    U: TypeTag: Numeric: Ordering
+    T: Ordering: ClassTag,
+    U: Numeric: Ordering: ClassTag
 ](
     classes: Map[T, U] = Map.empty[T, U],
     notFound: Int = -1
@@ -66,7 +65,7 @@ case class OneHotEncoder[
 
 case class ColumnStat(mean: Double, stdDev: Double)
 
-case class StandardScaler[T: Numeric: TypeTag: ClassTag](
+case class StandardScaler[T: Numeric: ClassTag](
     stats: Array[ColumnStat] = Array.empty
 ) {
   def fit(samples: Tensor[T]): StandardScaler[T] = {

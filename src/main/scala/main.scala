@@ -8,10 +8,11 @@ import randoms.uniform
 
 import java.nio.file.Paths
 import scala.reflect.ClassTag
-import scala.reflect.runtime.universe.TypeTag
 
 object main extends App {
-  def createEncoders[T: Numeric: ClassTag: TypeTag](
+  val start = System.currentTimeMillis()
+
+  def createEncoders[T: Numeric: ClassTag](
       data: Tensor2D[String]
   ): Tensor2D[String] => Tensor2D[T] = {
     val encoder = LabelEncoder[String]().fit(data.col(2))
@@ -67,4 +68,5 @@ object main extends App {
   val testPredicted = model.predict(xTest)
   val value = accuracy(yTest.as1D, testPredicted.as1D)
   println(s"test accuracy = $value")
+  println(s"time: ${(System.currentTimeMillis() - start) / 1000f} in sec")
 }

@@ -4,7 +4,6 @@ import java.io.File
 import java.nio.file.Path
 import scala.io.Source
 import scala.reflect.ClassTag
-import scala.reflect.runtime.universe.TypeTag
 import scala.util.Using
 
 object TextLoader {
@@ -30,10 +29,10 @@ case class TextLoader(
     }
   )
 
-  def cols[T: ClassTag: TypeTag](range: (Int, Int)): Tensor2D[T] =
+  def cols[T: ClassTag](range: (Int, Int)): Tensor2D[T] =
     transform[T](Tensor2D.slice(data, None, Some(range)))
 
-  def col[T: ClassTag: TypeTag](i: Int): Tensor1D[T] = {
+  def col[T: ClassTag](i: Int): Tensor1D[T] = {
     val col = Tensor2D.col(data, i)
     Tensor1D(transformArr[T](col))
   }

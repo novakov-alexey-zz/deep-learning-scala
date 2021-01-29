@@ -12,12 +12,12 @@ sealed trait Tensor[T] {
 case class Tensor0D[T: ClassTag](data: T) extends Tensor[T] {
   type A = T
   override def length: Int = 1
-  override def sizes: List[Int] = 1 :: Nil
+  override def sizes: List[Int] = length :: Nil
   override def toString: String = {
     val meta = s"sizes: ${sizes.head}, Tensor0D[${implicitly[ClassTag[T]]}]"
     s"$meta:\n" + data + "\n"
   }
-  override def cols: Int = 1
+  override def cols: Int = length
 }
 
 case class Tensor1D[T: ClassTag](data: Array[T]) extends Tensor[T] {

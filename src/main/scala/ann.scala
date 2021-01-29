@@ -7,7 +7,6 @@ import ops._
 import scala.collection.mutable.ArrayBuffer
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
-import scala.reflect.runtime.universe.TypeTag
 
 sealed trait Activation[T] extends (Tensor[T] => Tensor[T]) {
   def apply(x: Tensor[T]): Tensor[T]
@@ -62,7 +61,7 @@ object Loss {
   }
 
   implicit val binaryCrossEntropy: Loss[Float] = new Loss[Float] {
-    
+
     override def apply(
         actual: Tensor1D[Float],
         predicted: Tensor1D[Float]
@@ -81,7 +80,7 @@ object Loss {
 }
 sealed trait Optimizer[U] {
 
-  def updateWeights[T: Numeric: ClassTag: TypeTag](
+  def updateWeights[T: Numeric: ClassTag](
       weights: List[Weight[T]],
       neurons: List[Neuron[T]],
       error: Tensor[T],
@@ -95,7 +94,7 @@ object optimizers {
   implicit val miniBatchGradientDescent: Optimizer[MiniBatchGD] =
     new Optimizer[MiniBatchGD] {
 
-      override def updateWeights[T: Numeric: ClassTag: TypeTag](
+      override def updateWeights[T: Numeric: ClassTag](
           weights: List[Weight[T]],
           neurons: List[Neuron[T]],
           error: Tensor[T],
@@ -209,7 +208,7 @@ object Sequential {
       }
       ._1
 }
-case class Sequential[T: ClassTag: RandomGen: Numeric: TypeTag, U: Optimizer](
+case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     lossFunc: Loss[T],
     learningRate: T,
     metric: Metric[T],

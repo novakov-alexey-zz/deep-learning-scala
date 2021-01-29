@@ -1,47 +1,49 @@
+import ImplicitConfigHelper._
+
 import scala.reflect.ClassTag
-import scala.reflect.runtime.universe.{TypeTag, typeOf}
+
+object ImplicitConfigHelper {
+  // declares stable identifiers
+  val String_ = classOf[String]
+  val Int_ = classOf[Int]
+  val Long_ = classOf[Long]
+  val Float_ = classOf[Float]
+  val Double_ = classOf[Double]
+}
 
 object converter {
 
-  def transform[T: ClassTag: TypeTag](
+  def transform[T: ClassTag](
       data: Array[Array[String]]
   ): Tensor2D[T] = {
     val transformed = data.map(a => transformArr[T](a))
     Tensor2D[T](transformed)
   }
 
-  def transformArr[T: TypeTag: ClassTag](data: Array[String]): Array[T] =
-    typeOf[T] match {
-      case t if t =:= typeOf[Float]  => data.map(_.toFloat.asInstanceOf[T])
-      case t if t =:= typeOf[String] => data.map(_.asInstanceOf[T])
-      case t if t =:= typeOf[Double] => data.map(_.toDouble.asInstanceOf[T])
+  def transformArr[T: ClassTag](data: Array[String]): Array[T] =
+    implicitly[ClassTag[T]].runtimeClass match {
+      case Float_  => data.map(_.toFloat.asInstanceOf[T])
+      case String_ => data.map(_.asInstanceOf[T])
+      case Double_ => data.map(_.toDouble.asInstanceOf[T])
     }
 
-  private def transformInt[T: TypeTag](data: Int): T =
-    typeOf[T] match {
-      case t if t =:= typeOf[Float]  => data.toFloat.asInstanceOf[T]
-      case t if t =:= typeOf[String] => data.toString.asInstanceOf[T]
-      case t if t =:= typeOf[Double] => data.toDouble.asInstanceOf[T]
-      case t if t =:= typeOf[Int]    => data.asInstanceOf[T]
+  private def transformInt[T: ClassTag](data: Int): T =
+    implicitly[ClassTag[T]].runtimeClass match {
+      case Float_  => data.toFloat.asInstanceOf[T]
+      case String_ => data.toString.asInstanceOf[T]
+      case Double_ => data.toDouble.asInstanceOf[T]
+      case Int_    => data.asInstanceOf[T]
     }
 
-  def transformAny[A: TypeTag, B: TypeTag](a: A): B =
-    (typeOf[A], typeOf[B]) match {
-      case (t1, t2) if t1 =:= typeOf[Float] && t2 =:= typeOf[String] =>
-        a.toString.asInstanceOf[B]
-      case (t1, t2) if t1 =:= typeOf[Double] && t2 =:= typeOf[String] =>
-        a.toString.asInstanceOf[B]
-      case (t1, t2) if t1 =:= typeOf[String] && t2 =:= typeOf[Float] =>
-        a.toString.toFloat.asInstanceOf[B]
-      case (t1, t2) if t1 =:= typeOf[String] && t2 =:= typeOf[Double] =>
-        a.toString.toDouble.asInstanceOf[B]
-      case (t1, t2) if t1 =:= typeOf[Float] && t2 =:= typeOf[Double] =>
-        a.asInstanceOf[Float].toDouble.asInstanceOf[B]
-      case (t1, t2) if t1 =:= typeOf[Double] && t2 =:= typeOf[Float] =>
-        a.asInstanceOf[Double].toFloat.asInstanceOf[B]
-      case (t1, t2) if t1 =:= typeOf[Float] && t2 =:= typeOf[Float] =>
-        a.asInstanceOf[B]
-      case (t1, _) if t1 =:= typeOf[Int] =>
-        transformInt[B](a.asInstanceOf[Int])
+  def transformAny[A, B](a: A)(implicit ev1: ClassTag[A], ev2: ClassTag[B]): B =
+    (ev1.runtimeClass, ev2.runtimeClass) match {
+      case (Float_, String_)  => a.toString.asInstanceOf[B]
+      case (Double_, String_) => a.toString.asInstanceOf[B]
+      case (String_, Float_)  => a.toString.toFloat.asInstanceOf[B]
+      case (String_, Double_) => a.toString.toDouble.asInstanceOf[B]
+      case (Float_, Double_)  => a.asInstanceOf[Float].toDouble.asInstanceOf[B]
+      case (Double_, Float_)  => a.asInstanceOf[Double].toFloat.asInstanceOf[B]
+      case (Float_, Float_)   => a.asInstanceOf[B]
+      case (Int_, _)          => transformInt[B](a.asInstanceOf[Int])
     }
 }
