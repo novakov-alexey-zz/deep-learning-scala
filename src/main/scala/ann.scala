@@ -8,13 +8,13 @@ import scala.collection.mutable.ArrayBuffer
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
 
-sealed trait Activation[T] extends (Tensor[T] => Tensor[T]) {
+sealed trait ActivationFunc[T] extends (Tensor[T] => Tensor[T]) {
   def apply(x: Tensor[T]): Tensor[T]
   def derivative(x: Tensor[T]): Tensor[T]
 }
 
-object Activation {
-  implicit val relu: Activation[Float] = new Activation[Float] {
+object ActivationFunc {
+  implicit val relu: ActivationFunc[Float] = new ActivationFunc[Float] {
 
     override def apply(x: Tensor[Float]): Tensor[Float] =
       Tensor.map(x, (t: Float) => math.max(0, t))
@@ -23,7 +23,7 @@ object Activation {
       Tensor.map(x, (t: Float) => if (t < 0) 0 else 1)
   }
 
-  implicit val sigmoid: Activation[Float] = new Activation[Float] {
+  implicit val sigmoid: ActivationFunc[Float] = new ActivationFunc[Float] {
 
     override def apply(x: Tensor[Float]): Tensor[Float] =
       Tensor.map(x, (t: Float) => 1 / (1 + math.exp(-t).toFloat))
@@ -80,7 +80,7 @@ sealed trait Optimizer[U] {
 
   def updateWeights[T: Numeric: ClassTag](
       weights: List[Weight[T]],
-      neurons: List[Neuron[T]],
+      activations: List[Activation[T]],
       error: Tensor[T],
       learningRate: T
   ): List[Weight[T]]
@@ -94,19 +94,19 @@ object optimizers {
 
       override def updateWeights[T: Numeric: ClassTag](
           weights: List[Weight[T]],
-          neurons: List[Neuron[T]],
+          activations: List[Activation[T]],
           error: Tensor[T],
           learningRate: T
       ): List[Weight[T]] =
         weights
-          .zip(neurons)
+          .zip(activations)
           .foldRight(
             List.empty[Weight[T]],
             error,
             None: Option[Tensor[T]]
           ) {
             case (
-                  (Weight(w, b, f), Neuron(x, z, _)),
+                  (Weight(w, b, f), Activation(x, z, _)),
                   (ws, prevDelta, prevWeight)
                 ) =>
               val delta = (prevWeight match {
@@ -126,13 +126,21 @@ object optimizers {
 
 sealed trait Layer[T] {
   def units: Int
-  def f: Activation[T]
+  def f: ActivationFunc[T]
 }
 
 case class Dense[T](
-    f: Activation[T],
+    f: ActivationFunc[T],
     units: Int = 1
 ) extends Layer[T]
+
+case class Weight[T](w: Tensor[T], b: Tensor[T], f: ActivationFunc[T])
+
+/*
+ * z - before activation = w * x
+ * a - activation value
+ */
+case class Activation[T](x: Tensor[T], z: Tensor[T], a: Tensor[T])
 
 sealed trait Model[T] {
   def layers: List[Layer[T]]
@@ -147,25 +155,17 @@ object Model {
     implicitly[Numeric[T]].toFloat(losses.sum) / losses.length
 }
 
-case class Weight[T](w: Tensor[T], b: Tensor[T], f: Activation[T])
-
-/*
- * z - before activation = w * x
- * a - activation value
- */
-case class Neuron[T](x: Tensor[T], z: Tensor[T], a: Tensor[T])
-
 object Sequential {
   def activate[T: Numeric: ClassTag](
       input: Tensor[T],
       weights: List[Weight[T]]
-  ): List[Neuron[T]] =
+  ): List[Activation[T]] =
     weights
-      .foldLeft(input, ArrayBuffer.empty[Neuron[T]]) {
+      .foldLeft(input, ArrayBuffer.empty[Activation[T]]) {
         case ((x, acc), Weight(w, b, f)) =>
           val z = x * w + b
           val a = f(z)
-          (a, acc :+ Neuron(x, z, a))
+          (a, acc :+ Activation(x, z, a))
       }
       ._2
       .toList
@@ -203,44 +203,44 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     copy(layers = layers :+ l)
 
   private def trainEpoch(
-      xBatches: List[(Array[Array[T]], Array[T])],
+      xBatches: Array[(Array[Array[T]], Array[T])],
       weights: List[Weight[T]]
   ) = {
-    val (w, l, positives) =
+    val (w, l, metricValue) =
       xBatches.foldLeft(weights, List.empty[T], 0) {
-        case ((weights, batchLoss, positives), (batch, actualBatch)) =>
+        case ((weights, batchLoss, metricAcc), (batch, actualBatch)) =>
           // forward
-          val neurons = activate(batch.as2D, weights)
+          val activations = activate(batch.as2D, weights)
           val actual = actualBatch.as1D
-          val predicted = neurons.last.a.as1D
+          val predicted = activations.last.a.as1D
           val error = predicted - actual
           val loss = lossFunc(actual, predicted)
 
           // backward
           val updated = implicitly[Optimizer[U]].updateWeights(
             weights,
-            neurons,
+            activations,
             error.T,
             learningRate
           )
-          val correct = metric.correctPredictions(actual, predicted)
-          (updated, batchLoss :+ loss, positives + correct)
+          val metricValue = metric.calculate(actual, predicted)
+          (updated, batchLoss :+ loss, metricAcc + metricValue)
       }
     val avgLoss = transformAny[Float, T](getAvgLoss(l))
-    (w, avgLoss, positives)
+    (w, avgLoss, metricValue)
   }
 
   def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): Model[T] = {
     lazy val inputs = x.cols
     lazy val actualBatches = y.batchColumn(batchSize).toArray
-    lazy val xBatches = x.batches(batchSize).zip(actualBatches).toList
+    lazy val xBatches = x.batches(batchSize).zip(actualBatches).toArray
     lazy val w = getWeights(inputs)
 
     val (updatedWeights, epochLosses) =
       (1 to epochs).foldLeft((w, List.empty[T])) {
         case ((weights, losses), epoch) =>
           val (w, l, positives) = trainEpoch(xBatches, weights)
-          val metricValue = metric.result(x.length, positives)
+          val metricValue = metric.average(x.length, positives)
           println(
             s"epoch: $epoch/$epochs, avg. loss: $l, ${metric.name}: $metricValue"
           )
@@ -249,23 +249,28 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     copy(weights = updatedWeights, losses = epochLosses)
   }
 
+  def reset(): Model[T] =
+    copy(weights = Nil)
+
   private def getWeights(inputs: Int) =
-    if (weights == Nil) initialWeights(layers, inputs) else weights
+    if (weights == Nil || layers.length != weights.length)
+      initialWeights(layers, inputs)
+    else weights
 }
 
 trait Metric[T] {
   val name: String
 
-  def correctPredictions(
+  def calculate(
       actual: Tensor1D[T],
       predicted: Tensor1D[T]
   ): Int
 
-  def result(count: Int, correct: Int): Double
+  def average(count: Int, correct: Int): Double
 
   def apply(actual: Tensor1D[T], predicted: Tensor1D[T]): Double = {
-    val correct = correctPredictions(actual, predicted)
-    result(actual.length, correct)
+    val correct = calculate(actual, predicted)
+    average(actual.length, correct)
   }
 }
 
@@ -276,7 +281,7 @@ object Metric {
   def accuracyMetric[T: Numeric]: Metric[T] = new Metric[T] {
     val name = "accuracy"
 
-    def correctPredictions(
+    def calculate(
         actual: Tensor1D[T],
         predicted: Tensor1D[T]
     ): Int =
@@ -285,7 +290,7 @@ object Metric {
         acc + (if (y == implicitly[Numeric[T]].fromInt(normalized)) 1 else 0)
       }
 
-    def result(count: Int, correct: Int): Double =
+    def average(count: Int, correct: Int): Double =
       correct.toDouble / count
   }
 }

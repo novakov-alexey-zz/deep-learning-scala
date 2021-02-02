@@ -1,4 +1,4 @@
-import Activation._
+import ActivationFunc._
 import Loss._
 import Metric.{accuracyMetric, predictedToBinary}
 import converter.transform
