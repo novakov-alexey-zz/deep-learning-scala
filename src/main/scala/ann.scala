@@ -1,4 +1,4 @@
-import Model.{batchColumn, batches, getAvgLoss}
+import Model._
 import RandomGen._
 import Sequential._
 import converter.transformAny
@@ -61,16 +61,14 @@ object Loss {
   }
 
   implicit val binaryCrossEntropy: Loss[Float] = new Loss[Float] {
-
     override def apply(
         actual: Tensor1D[Float],
         predicted: Tensor1D[Float]
     ): Float = {
       var sumScore = 0.0
-      for {
-        y1 <- actual.data
-        y2 <- predicted.data
-      } {
+      for (i <- actual.data.indices) {
+        val y1 = actual.data(i)
+        val y2 = predicted.data(i)
         sumScore += y1 * math.log(1e-15 + y2.toDouble)
       }
       val meanSumScore = 1.0 / actual.length * sumScore
@@ -108,19 +106,18 @@ object optimizers {
             None: Option[Tensor[T]]
           ) {
             case (
-                  (Weight(w, b, actFunc), neuron),
+                  (Weight(w, b, f), Neuron(x, z, _)),
                   (ws, prevDelta, prevWeight)
                 ) =>
-              val delta = prevWeight match {
-                case Some(pw) =>
-                  (prevDelta * pw.T) multiply actFunc.derivative(neuron.z)
-                case None => prevDelta
-              }
+              val delta = (prevWeight match {
+                case Some(pw) => prevDelta * pw.T
+                case None     => prevDelta
+              }) multiply f.derivative(z)
 
-              val partialDerivative = neuron.x.T * delta
+              val partialDerivative = x.T * delta
               val newWeight = w - (learningRate * partialDerivative)
               val newBias = b - (learningRate * delta.sum)
-              val updated = Weight(newWeight, newBias, actFunc) +: ws
+              val updated = Weight(newWeight, newBias, f) +: ws
               (updated, delta, Some(w))
           }
           ._1
@@ -132,39 +129,20 @@ sealed trait Layer[T] {
   def f: Activation[T]
 }
 
-case class Dense[T](f: Activation[T], units: Int = 1) extends Layer[T]
+case class Dense[T](
+    f: Activation[T],
+    units: Int = 1
+) extends Layer[T]
 
 sealed trait Model[T] {
   def layers: List[Layer[T]]
-  def train(x: Tensor[T], y: Tensor1D[T], epocs: Int): Model[T]
+  def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): Model[T]
   def currentWeights: List[(Tensor[T], Tensor[T])]
   def predict(x: Tensor[T]): Tensor[T]
   def losses: List[T]
 }
 
 object Model {
-  def batches[T: ClassTag](
-      t: Tensor2D[T],
-      batchSize: Int
-  ): Iterator[Array[Array[T]]] =
-    t.data.grouped(batchSize)
-
-  def batchColumn[T: ClassTag](
-      t: Tensor1D[T],
-      batchSize: Int
-  ): Iterator[Array[T]] =
-    t.data.grouped(batchSize)
-
-  def batches[T: ClassTag: Numeric](
-      t: Tensor[T],
-      batchSize: Int
-  ): Iterator[Array[Array[T]]] =
-    t match {
-      case Tensor1D(_)    => t.as2D.data.grouped(batchSize)
-      case Tensor2D(data) => data.grouped(batchSize)
-      case Tensor0D(data) => Iterator(Array(Array(data)))
-    }
-
   def getAvgLoss[T: Numeric](losses: List[T]): Float =
     implicitly[Numeric[T]].toFloat(losses.sum) / losses.length
 }
@@ -175,11 +153,7 @@ case class Weight[T](w: Tensor[T], b: Tensor[T], f: Activation[T])
  * z - before activation = w * x
  * a - activation value
  */
-case class Neuron[T](
-    x: Tensor[T],
-    z: Tensor[T],
-    a: Tensor[T]
-)
+case class Neuron[T](x: Tensor[T], z: Tensor[T], a: Tensor[T])
 
 object Sequential {
   def activate[T: Numeric: ClassTag](
@@ -188,9 +162,9 @@ object Sequential {
   ): List[Neuron[T]] =
     weights
       .foldLeft(input, ArrayBuffer.empty[Neuron[T]]) {
-        case ((x, acc), Weight(w, b, activation)) =>
+        case ((x, acc), Weight(w, b, f)) =>
           val z = x * w + b
-          val a = activation(z)
+          val a = f(z)
           (a, acc :+ Neuron(x, z, a))
       }
       ._2
@@ -208,11 +182,12 @@ object Sequential {
       }
       ._1
 }
+
 case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     lossFunc: Loss[T],
     learningRate: T,
     metric: Metric[T],
-    batchSize: Int = 32,
+    batchSize: Int = 16,
     layers: List[Layer[T]] = Nil,
     weights: List[Weight[T]] = Nil,
     losses: List[T] = Nil
@@ -245,20 +220,21 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
           val updated = implicitly[Optimizer[U]].updateWeights(
             weights,
             neurons,
-            error,
+            error.T,
             learningRate
           )
           val correct = metric.correctPredictions(actual, predicted)
           (updated, batchLoss :+ loss, positives + correct)
       }
+    // println(l)
     val avgLoss = transformAny[Float, T](getAvgLoss(l))
     (w, avgLoss, positives)
   }
 
   def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): Model[T] = {
     lazy val inputs = x.cols
-    lazy val actualBatches = batchColumn(y, batchSize).toArray
-    lazy val xBatches = batches(x, batchSize).zip(actualBatches).toList
+    lazy val actualBatches = y.batchColumn(batchSize).toArray
+    lazy val xBatches = x.batches(batchSize).zip(actualBatches).toList
     lazy val w = getWeights(inputs)
 
     val (updatedWeights, epochLosses) =
@@ -305,8 +281,8 @@ object Metric {
         actual: Tensor1D[T],
         predicted: Tensor1D[T]
     ): Int =
-      actual.data.zip(predicted.data).foldLeft(0) { case (acc, (y, yhat)) =>
-        val normalized = predictedToBinary(yhat)
+      actual.data.zip(predicted.data).foldLeft(0) { case (acc, (y, yHat)) =>
+        val normalized = predictedToBinary(yHat)
         acc + (if (y == implicitly[Numeric[T]].fromInt(normalized)) 1 else 0)
       }
 

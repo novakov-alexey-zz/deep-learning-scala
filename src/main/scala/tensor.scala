@@ -11,13 +11,14 @@ sealed trait Tensor[T] {
 
 case class Tensor0D[T: ClassTag](data: T) extends Tensor[T] {
   type A = T
-  override def length: Int = 1
-  override def sizes: List[Int] = length :: Nil
-  override def toString: String = {
-    val meta = s"sizes: ${sizes.head}, Tensor0D[${implicitly[ClassTag[T]]}]"
+  override val length: Int = 1
+  override val sizes: List[Int] = length :: Nil
+  private val meta = s"sizes: $length, Tensor0D[${implicitly[ClassTag[T]]}]"
+
+  override def toString: String =
     s"$meta:\n" + data + "\n"
-  }
-  override def cols: Int = length
+
+  override val cols: Int = length
 }
 
 case class Tensor1D[T: ClassTag](data: Array[T]) extends Tensor[T] {
@@ -48,13 +49,13 @@ case class Tensor2D[T: ClassTag](data: Array[Array[T]]) extends Tensor[T] {
   def sizes2D: (Int, Int) =
     (data.length, data.headOption.map(_.length).getOrElse(0))
 
-  override def toString: String = {
-    val meta =
-      s"sizes: ${sizes.mkString("x")}, Tensor2D[${implicitly[ClassTag[T]]}]"
+  private val meta =
+    s"sizes: ${sizes.mkString("x")}, Tensor2D[${implicitly[ClassTag[T]]}]"
+
+  override def toString: String =
     s"$meta:\n[" + data
-      .map(a => a.mkString("[", ",", "]"))
+      .map(_.mkString("[", ",", "]"))
       .mkString("\n ") + "]\n"
-  }
 
   override def cols: Int = sizes2D._2
 
@@ -105,8 +106,8 @@ object ops {
     def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
 
     def map[U: ClassTag](f: T => U): Tensor[U] = Tensor.map[T, U](t, f)
-    def -(that: T): Tensor[T] = Tensor.substract(t, Tensor0D(that))
-    def -(that: Tensor[T]): Tensor[T] = Tensor.substract(t, that)
+    def -(that: T): Tensor[T] = Tensor.subtract(t, Tensor0D(that))
+    def -(that: Tensor[T]): Tensor[T] = Tensor.subtract(t, that)
     def +(that: Tensor[T]): Tensor[T] = Tensor.plus(t, that)
     def as1D: Tensor1D[T] = Tensor.as1D(t)
     def as2D: Tensor2D[T] = Tensor.as2D(t)
@@ -114,6 +115,11 @@ object ops {
     def T: Tensor[T] = Tensor.transpose(t)
     def split(fraction: Float): (Tensor[T], Tensor[T]) =
       Tensor.split(fraction, t)
+    def batches(
+        batchSize: Int
+    ): Iterator[Array[Array[T]]] = Tensor.batches(t, batchSize)
+
+    // Hadamard product
     def multiply(that: Tensor[T]): Tensor[T] = Tensor.multiply(t, that)
   }
 
@@ -121,7 +127,7 @@ object ops {
     // dot product
     def *(that: Tensor[T]): Tensor[T] = Tensor.mul(Tensor0D(t), that)
 
-    def -(that: Tensor[T]): Tensor[T] = Tensor.substract(Tensor0D(t), that)
+    def -(that: Tensor[T]): Tensor[T] = Tensor.subtract(Tensor0D(t), that)
 
     def as0D: Tensor0D[T] = Tensor0D(t)
   }
@@ -148,6 +154,11 @@ object ops {
 
     def T: Tensor2D[T] = Tensor.transpose(t).asInstanceOf[Tensor2D[T]]
   }
+
+  implicit class Tensor1DOps[T: ClassTag](val t: Tensor1D[T]) {
+    def batchColumn(batchSize: Int): Iterator[Array[T]] =
+      t.data.grouped(batchSize)
+  }
 }
 
 object Tensor {
@@ -157,9 +168,13 @@ object Tensor {
   def of[T: ClassTag](size: Int, size2: Int): Tensor2D[T] =
     Tensor2D[T](Array.fill(size)(of[T](size2).data))
 
-  def substract[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
+  def subtract[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match {
       case (Tensor1D(data), Tensor1D(data2)) =>
+        assert(
+          data.length == data2.length,
+          s"Vectors must have the same length, ${data.length} ! = ${data2.length}"
+        )
         val res = data.zip(data2).map { case (a, b) => a - b }
         Tensor1D(res)
       case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>
@@ -204,7 +219,7 @@ object Tensor {
         Tensor1D(data.zip(data2).map { case (a, b) => a + b })
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ + data2)))
-      case (t1 @ Tensor2D(data), t2 @ Tensor1D(data2)) =>
+      case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) =>
         matrixPlusVector(t1, t2)
       case (t1 @ Tensor1D(_), t2 @ Tensor2D(_)) =>
         matrixPlusVector(t2, t1)
@@ -310,7 +325,7 @@ object Tensor {
       case (t1 @ Tensor1D(_), t2 @ Tensor1D(_)) => combine(t1, t2)
       case (t1 @ Tensor1D(_), Tensor2D(data2)) =>
         combine(t1, Tensor1D(data2.flatten))
-      case (Tensor2D(data), t2 @ Tensor0D(data2)) =>
+      case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor1D(data.flatten :+ data2)
       case (Tensor2D(data), t2 @ Tensor1D(_)) =>
         combine(Tensor1D(data.flatten), t2)
@@ -351,7 +366,8 @@ object Tensor {
           }
         }
         Tensor2D(transposed)
-      case _ => t
+      case Tensor1D(data) => Tensor2D(asColumn(data))
+      case _              => t
     }
 
   def split[T: ClassTag](
@@ -406,9 +422,19 @@ object Tensor {
           }
         }
         Tensor2D(sum)
-      case (a, b) => sys.error(s"Not implemented for: $a\n and\n $b")
+      case (a, b) => sys.error(s"Not implemented for:\n$a\n and\n$b")
     }
   }
+
+  def batches[T: ClassTag: Numeric](
+      t: Tensor[T],
+      batchSize: Int
+  ): Iterator[Array[Array[T]]] =
+    t match {
+      case Tensor1D(_)    => as2D(t).data.grouped(batchSize)
+      case Tensor2D(data) => data.grouped(batchSize)
+      case Tensor0D(data) => Iterator(Array(Array(data)))
+    }
 }
 
 object RandomGen {

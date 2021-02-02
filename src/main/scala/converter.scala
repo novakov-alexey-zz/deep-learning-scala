@@ -3,7 +3,6 @@ import ImplicitConfigHelper._
 import scala.reflect.ClassTag
 
 object ImplicitConfigHelper {
-  // declares stable identifiers
   val String_ = classOf[String]
   val Int_ = classOf[Int]
   val Long_ = classOf[Long]

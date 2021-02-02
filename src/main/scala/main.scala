@@ -10,7 +10,6 @@ import java.nio.file.Paths
 import scala.reflect.ClassTag
 
 object main extends App {
-  val start = System.currentTimeMillis()
 
   def createEncoders[T: Numeric: ClassTag](
       data: Tensor2D[String]
@@ -29,8 +28,8 @@ object main extends App {
 
   val ann =
     Sequential[Float, MiniBatchGD](
-      meanSquaredError,
-      learningRate = 0.001f,
+      binaryCrossEntropy,
+      learningRate = 0.05f,
       metric = accuracy
     )
       .add(Dense(relu, 6))
@@ -54,19 +53,21 @@ object main extends App {
 
   val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
 
+  val start = System.currentTimeMillis()
   val model = ann.train(xTrain, yTrain.as1D, epochs = 100)
-
+  println(
+    s"training time: ${(System.currentTimeMillis() - start) / 1000f} in sec"
+  )
 // Single test
   val example = TextLoader(
     "n/a,n/a,n/a,600,France,Male,40,3,60000,2,1,1,50000,n/a"
   ).cols[String](3, -1)
   val testExample = prepareData(example)
   val exited = predictedToBinary(model.predict(testExample).as1D.data.head) == 1
-  println(s"Exited customer? " + exited)
+  println(s"Exited customer? $exited")
 
 // Test Dataset
   val testPredicted = model.predict(xTest)
   val value = accuracy(yTest.as1D, testPredicted.as1D)
   println(s"test accuracy = $value")
-  println(s"time: ${(System.currentTimeMillis() - start) / 1000f} in sec")
 }
