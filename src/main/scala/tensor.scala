@@ -135,6 +135,14 @@ object ops {
   implicit class TensorArrayOps[T: ClassTag: Numeric](val t: Array[Tensor[T]]) {
     def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)
   }
+  
+  implicit class ArrayOps[T: ClassTag: Numeric](val a: Array[T]) {
+    def as1D: Tensor1D[T] = Tensor1D(a)
+  }
+  
+  implicit class MatrixOps[T: ClassTag: Numeric](val a: Array[Array[T]]) {
+    def as2D: Tensor2D[T] = Tensor2D(a)
+  }
 
   implicit class TensorListOps[T: ClassTag: Numeric](val t: List[Tensor[T]]) {
     def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)

@@ -30,7 +30,8 @@ object main extends App {
     Sequential[Float, MiniBatchGD](
       binaryCrossEntropy,
       learningRate = 0.05f,
-      metric = accuracy
+      metric = accuracy,
+      batchSize = 32
     )
       .add(Dense(relu, 6))
       .add(Dense(relu, 6))

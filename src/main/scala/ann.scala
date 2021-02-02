@@ -210,8 +210,8 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
       xBatches.foldLeft(weights, List.empty[T], 0) {
         case ((weights, batchLoss, positives), (batch, actualBatch)) =>
           // forward
-          val neurons = activate(Tensor2D(batch), weights)
-          val actual = Tensor1D(actualBatch)
+          val neurons = activate(batch.as2D, weights)
+          val actual = actualBatch.as1D
           val predicted = neurons.last.a.as1D
           val error = predicted - actual
           val loss = lossFunc(actual, predicted)
@@ -226,7 +226,6 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
           val correct = metric.correctPredictions(actual, predicted)
           (updated, batchLoss :+ loss, positives + correct)
       }
-    // println(l)
     val avgLoss = transformAny[Float, T](getAvgLoss(l))
     (w, avgLoss, positives)
   }
@@ -238,12 +237,12 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     lazy val w = getWeights(inputs)
 
     val (updatedWeights, epochLosses) =
-      (0 until epochs).foldLeft((w, List.empty[T])) {
+      (1 to epochs).foldLeft((w, List.empty[T])) {
         case ((weights, losses), epoch) =>
           val (w, l, positives) = trainEpoch(xBatches, weights)
           val metricValue = metric.result(x.length, positives)
           println(
-            s"epoch: ${epoch + 1}/$epochs, avg. loss: $l, ${metric.name}: $metricValue"
+            s"epoch: $epoch/$epochs, avg. loss: $l, ${metric.name}: $metricValue"
           )
           (w, losses :+ l)
       }
