@@ -8,22 +8,21 @@ import scala.collection.mutable.ArrayBuffer
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
 
-sealed trait ActivationFunc[T] extends (Tensor[T] => Tensor[T]) {
+sealed trait ActivationFunc[T] extends (Tensor[T] => Tensor[T]):
   def apply(x: Tensor[T]): Tensor[T]
   def derivative(x: Tensor[T]): Tensor[T]
-}
 
-object ActivationFunc {
-  implicit val relu: ActivationFunc[Float] = new ActivationFunc[Float] {
+object ActivationFunc:
+  val relu: ActivationFunc[Float] = new ActivationFunc[Float] {
 
     override def apply(x: Tensor[Float]): Tensor[Float] =
       Tensor.map(x, (t: Float) => math.max(0, t))
 
     override def derivative(x: Tensor[Float]): Tensor[Float] =
-      Tensor.map(x, (t: Float) => if (t < 0) 0 else 1)
+      Tensor.map(x, (t: Float) => if t < 0 then 0 else 1)
   }
 
-  implicit val sigmoid: ActivationFunc[Float] = new ActivationFunc[Float] {
+  val sigmoid: ActivationFunc[Float] = new ActivationFunc[Float] {
 
     override def apply(x: Tensor[Float]): Tensor[Float] =
       Tensor.map(x, (t: Float) => 1 / (1 + math.exp(-t).toFloat))
@@ -35,48 +34,42 @@ object ActivationFunc {
           math.exp(-t).toFloat / math.pow(1 + math.exp(-t).toFloat, 2).toFloat
       )
   }
-}
-sealed trait Loss[T] {
+sealed trait Loss[T]:
   def apply(
       actual: Tensor1D[T],
       predicted: Tensor1D[T]
   ): T
-}
 
-object Loss {
-  implicit val meanSquaredError: Loss[Float] = new Loss[Float] {
+object Loss:
+  val meanSquaredError: Loss[Float] = new Loss[Float] {
     override def apply(
         actual: Tensor1D[Float],
         predicted: Tensor1D[Float]
-    ): Float = {
+    ): Float =
       var sumScore = 0.0
-      for (i <- actual.data.indices) {
+      for i <- actual.data.indices do
         val y1 = actual.data(i)
         val y2 = predicted.data(i)
         sumScore += math.pow(y1 - y2, 2)
-      }
       val meanSumScore = 1.0 / actual.length * sumScore
       meanSumScore.toFloat
-    }
   }
 
-  implicit val binaryCrossEntropy: Loss[Float] = new Loss[Float] {
+  val binaryCrossEntropy: Loss[Float] = new Loss[Float] {
     override def apply(
         actual: Tensor1D[Float],
         predicted: Tensor1D[Float]
-    ): Float = {
+    ): Float =
       var sumScore = 0.0
-      for (i <- actual.data.indices) {
+      for i <- actual.data.indices do
         val y1 = actual.data(i)
         val y2 = predicted.data(i)
         sumScore += y1 * math.log(1e-15 + y2.toDouble)
-      }
       val meanSumScore = 1.0 / actual.length * sumScore
       -meanSumScore.toFloat
-    }
   }
-}
-sealed trait Optimizer[U] {
+  
+sealed trait Optimizer[U]:
 
   def updateWeights[T: Numeric: ClassTag](
       weights: List[Weight[T]],
@@ -84,57 +77,56 @@ sealed trait Optimizer[U] {
       error: Tensor[T],
       learningRate: T
   ): List[Weight[T]]
-}
 
 sealed trait MiniBatchGD
 
-object optimizers {
-  implicit val miniBatchGradientDescent: Optimizer[MiniBatchGD] =
-    new Optimizer[MiniBatchGD] {
+object optimizers:
+  given miniBatchGradientDescent: Optimizer[MiniBatchGD] with
+    override def updateWeights[T: Numeric: ClassTag](
+        weights: List[Weight[T]],
+        activations: List[Activation[T]],
+        error: Tensor[T],
+        learningRate: T
+    ): List[Weight[T]] =
+      weights
+        .zip(activations)
+        .foldRight(
+          List.empty[Weight[T]],
+          error,
+          None: Option[Tensor[T]]
+        ) {
+          case (
+                (Weight(w, b, f, u), Activation(x, z, _)),
+                (ws, prevDelta, prevWeight)
+              ) =>
+            val delta = (prevWeight match {
+              case Some(pw) => prevDelta * pw.T
+              case None     => prevDelta
+            }) multiply f.derivative(z)
 
-      override def updateWeights[T: Numeric: ClassTag](
-          weights: List[Weight[T]],
-          activations: List[Activation[T]],
-          error: Tensor[T],
-          learningRate: T
-      ): List[Weight[T]] =
-        weights
-          .zip(activations)
-          .foldRight(
-            List.empty[Weight[T]],
-            error,
-            None: Option[Tensor[T]]
-          ) {
-            case (
-                  (Weight(w, b, f), Activation(x, z, _)),
-                  (ws, prevDelta, prevWeight)
-                ) =>
-              val delta = (prevWeight match {
-                case Some(pw) => prevDelta * pw.T
-                case None     => prevDelta
-              }) multiply f.derivative(z)
+            val partialDerivative = x.T * delta
+            val newWeight = w - (learningRate * partialDerivative)
+            val newBias = b - (learningRate * delta.sum)
+            val updated = Weight(newWeight, newBias, f, u) +: ws
+            (updated, delta, Some(w))
+        }
+        ._1    
 
-              val partialDerivative = x.T * delta
-              val newWeight = w - (learningRate * partialDerivative)
-              val newBias = b - (learningRate * delta.sum)
-              val updated = Weight(newWeight, newBias, f) +: ws
-              (updated, delta, Some(w))
-          }
-          ._1
-    }
-}
-
-sealed trait Layer[T] {
+sealed trait Layer[T]:
   def units: Int
   def f: ActivationFunc[T]
-}
 
 case class Dense[T](
     f: ActivationFunc[T],
     units: Int = 1
 ) extends Layer[T]
 
-case class Weight[T](w: Tensor[T], b: Tensor[T], f: ActivationFunc[T])
+case class Weight[T](
+    w: Tensor[T],
+    b: Tensor[T],
+    f: ActivationFunc[T],
+    units: Int
+)
 
 /*
  * z - before activation = w * x
@@ -142,27 +134,25 @@ case class Weight[T](w: Tensor[T], b: Tensor[T], f: ActivationFunc[T])
  */
 case class Activation[T](x: Tensor[T], z: Tensor[T], a: Tensor[T])
 
-sealed trait Model[T] {
-  def layers: List[Layer[T]]
+sealed trait Model[T]:
+  def reset(): Model[T]
   def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): Model[T]
   def currentWeights: List[(Tensor[T], Tensor[T])]
   def predict(x: Tensor[T]): Tensor[T]
   def losses: List[T]
-}
 
-object Model {
-  def getAvgLoss[T: Numeric](losses: List[T]): Float =
-    implicitly[Numeric[T]].toFloat(losses.sum) / losses.length
-}
+object Model:
+  def getAvgLoss[T](losses: List[T])(using num: Numeric[T]): Float =
+    num.toFloat(losses.sum) / losses.length
 
-object Sequential {
+object Sequential:
   def activate[T: Numeric: ClassTag](
       input: Tensor[T],
       weights: List[Weight[T]]
   ): List[Activation[T]] =
     weights
       .foldLeft(input, ArrayBuffer.empty[Activation[T]]) {
-        case ((x, acc), Weight(w, b, f)) =>
+        case ((x, acc), Weight(w, b, f, _)) =>
           val z = x * w + b
           val a = f(z)
           (a, acc :+ Activation(x, z, a))
@@ -170,28 +160,15 @@ object Sequential {
       ._2
       .toList
 
-  def initialWeights[T: RandomGen: Numeric: ClassTag](
-      layers: List[Layer[T]],
-      inputs: Int
-  ): List[Weight[T]] =
-    layers
-      .foldLeft(List.empty[Weight[T]], inputs) { case ((acc, inputs), layer) =>
-        val w = random2D(inputs, layer.units)
-        val b = zeros(layer.units)
-        (acc :+ Weight(w, b, layer.f), layer.units)
-      }
-      ._1
-}
-
 case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     lossFunc: Loss[T],
     learningRate: T,
     metric: Metric[T],
     batchSize: Int = 16,
-    layers: List[Layer[T]] = Nil,
+    layerStack: Int => List[Weight[T]] = (_: Int) => List.empty[Weight[T]],    
     weights: List[Weight[T]] = Nil,
     losses: List[T] = Nil
-) extends Model[T] {
+) extends Model[T]:
 
   def currentWeights: List[(Tensor[T], Tensor[T])] =
     weights.map(w => w.w -> w.b)
@@ -199,13 +176,20 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
   def predict(x: Tensor[T]): Tensor[T] =
     activate(x, weights).last.a
 
-  def add(l: Layer[T]): Sequential[T, U] =
-    copy(layers = layers :+ l)
+  def add(layer: Layer[T]): Sequential[T, U] =
+    copy(layerStack = (inputs) => {
+      val currentWeights = layerStack(inputs)
+      val prevInput =
+        currentWeights.reverse.headOption.map(_.units).getOrElse(inputs)
+      val w = random2D(prevInput, layer.units)
+      val b = zeros(layer.units)
+      (currentWeights :+ Weight(w, b, layer.f, layer.units))
+    })
 
   private def trainEpoch(
       xBatches: Array[(Array[Array[T]], Array[T])],
       weights: List[Weight[T]]
-  ) = {
+  ) =
     val (w, l, metricValue) =
       xBatches.foldLeft(weights, List.empty[T], 0) {
         case ((weights, batchLoss, metricAcc), (batch, actualBatch)) =>
@@ -228,9 +212,8 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
       }
     val avgLoss = transformAny[Float, T](getAvgLoss(l))
     (w, avgLoss, metricValue)
-  }
 
-  def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): Model[T] = {
+  def train(x: Tensor[T], y: Tensor1D[T], epochs: Int): Model[T] =
     lazy val inputs = x.cols
     lazy val actualBatches = y.batchColumn(batchSize).toArray
     lazy val xBatches = x.batches(batchSize).zip(actualBatches).toArray
@@ -239,26 +222,23 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     val (updatedWeights, epochLosses) =
       (1 to epochs).foldLeft((w, List.empty[T])) {
         case ((weights, losses), epoch) =>
-          val (w, l, positives) = trainEpoch(xBatches, weights)
-          val metricValue = metric.average(x.length, positives)
+          val (w, avgLoss, metricValue) = trainEpoch(xBatches, weights)
+          val metricAvg = metric.average(x.length, metricValue)
           println(
-            s"epoch: $epoch/$epochs, avg. loss: $l, ${metric.name}: $metricValue"
+            s"epoch: $epoch/$epochs, avg. loss: $avgLoss, ${metric.name}: $metricAvg"
           )
-          (w, losses :+ l)
+          (w, losses :+ avgLoss)
       }
     copy(weights = updatedWeights, losses = epochLosses)
-  }
 
   def reset(): Model[T] =
     copy(weights = Nil)
 
   private def getWeights(inputs: Int) =
-    if (weights == Nil || layers.length != weights.length)
-      initialWeights(layers, inputs)
+    if weights == Nil then layerStack(inputs)
     else weights
-}
 
-trait Metric[T] {
+trait Metric[T]:
   val name: String
 
   def calculate(
@@ -268,15 +248,13 @@ trait Metric[T] {
 
   def average(count: Int, correct: Int): Double
 
-  def apply(actual: Tensor1D[T], predicted: Tensor1D[T]): Double = {
+  def apply(actual: Tensor1D[T], predicted: Tensor1D[T]): Double =
     val correct = calculate(actual, predicted)
     average(actual.length, correct)
-  }
-}
 
-object Metric {
-  def predictedToBinary[T: Numeric](v: T): Byte =
-    if (implicitly[Numeric[T]].toDouble(v) > 0.5) 1 else 0
+object Metric:
+  def predictedToBinary[T](v: T)(using num: Numeric[T]): Byte =
+    if num.toDouble(v) > 0.5 then 1 else 0
 
   def accuracyMetric[T: Numeric]: Metric[T] = new Metric[T] {
     val name = "accuracy"
@@ -287,10 +265,9 @@ object Metric {
     ): Int =
       actual.data.zip(predicted.data).foldLeft(0) { case (acc, (y, yHat)) =>
         val normalized = predictedToBinary(yHat)
-        acc + (if (y == implicitly[Numeric[T]].fromInt(normalized)) 1 else 0)
+        acc + (if y == implicitly[Numeric[T]].fromInt(normalized) then 1 else 0)
       }
 
     def average(count: Int, correct: Int): Double =
       correct.toDouble / count
   }
-}
