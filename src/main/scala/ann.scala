@@ -20,6 +20,8 @@ object ActivationFunc:
 
     override def derivative(x: Tensor[Float]): Tensor[Float] =
       Tensor.map(x, (t: Float) => if t < 0 then 0 else 1)
+
+    override def toString() = "relu"
   }
 
   val sigmoid: ActivationFunc[Float] = new ActivationFunc[Float] {
@@ -33,6 +35,8 @@ object ActivationFunc:
         (t: Float) =>
           math.exp(-t).toFloat / math.pow(1 + math.exp(-t).toFloat, 2).toFloat
       )
+    
+    override def toString() = "sigmoid"
   }
 sealed trait Loss[T]:
   def apply(
@@ -140,7 +144,10 @@ case class Weight[T](
     b: Tensor[T],
     f: ActivationFunc[T],
     units: Int
-)
+) {
+  override def toString() = 
+    s"\n(\nweight = $w,\nbias = $b,\nf = $f,\nunits = $units)"
+}
 
 /*
  * z - before activation = w * x
@@ -151,13 +158,13 @@ case class Activation[T](x: Tensor[T], z: Tensor[T], a: Tensor[T])
 sealed trait Model[T]:
   def reset(): Model[T]
   def train(x: Tensor[T], y: Tensor[T], epochs: Int): Model[T]
-  def currentWeights: List[(Tensor[T], Tensor[T])]
+  def currentWeights: List[Weight[T]]
   def predict(x: Tensor[T]): Tensor[T]
   def losses: List[T]
 
 object Model:
-  def getAvgLoss[T](losses: List[T])(using num: Numeric[T]): Float =
-    num.toFloat(losses.sum) / losses.length
+  def getAvgLoss[T: ClassTag](losses: List[T])(using num: Numeric[T]): T =
+    transformAny[Float, T](num.toFloat(losses.sum) / losses.length)
 
 object Sequential:
   def activate[T: Numeric: ClassTag](
@@ -184,8 +191,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     losses: List[T] = Nil
 ) extends Model[T]:
 
-  def currentWeights: List[(Tensor[T], Tensor[T])] =
-    weights.map(w => w.w -> w.b)
+  def currentWeights: List[Weight[T]] = weights
 
   def predict(x: Tensor[T]): Tensor[T] =
     activate(x, weights).last.a
@@ -223,9 +229,8 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
           )
           val metricValue = metric.calculate(actual, predicted)
           (updated, batchLoss :+ loss, metricAcc + metricValue)
-      }
-    val avgLoss = transformAny[Float, T](getAvgLoss(l))
-    (w, avgLoss, metricValue)
+      }    
+    (w, getAvgLoss(l), metricValue)
 
   def train(x: Tensor[T], y: Tensor[T], epochs: Int): Model[T] =
     lazy val inputs = x.cols

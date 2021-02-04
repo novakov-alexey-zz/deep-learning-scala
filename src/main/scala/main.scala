@@ -32,7 +32,7 @@ import scala.reflect.ClassTag
     batchSize = 32
   )
     .add(Dense(relu, 6))
-    .add(Dense(relu, 6))
+    .add(Dense(relu, 6))    
     .add(Dense(sigmoid))
   
   val dataLoader = TextLoader(Paths.get("data", "Churn_Modelling.csv")).load()
@@ -55,7 +55,7 @@ import scala.reflect.ClassTag
   val start = System.currentTimeMillis()
   val model = ann.train(xTrain, yTrain, epochs = 100)
   println(s"training time: ${(System.currentTimeMillis() - start) / 1000f} in sec")
-  
+
   // Single test
   val example = TextLoader(
     "n/a,n/a,n/a,600,France,Male,40,3,60000,2,1,1,50000,n/a"
