@@ -7,6 +7,21 @@ sealed trait Tensor[T]:
   def length: Int
   def sizes: List[Int]
   def cols: Int
+  
+extension [T: ClassTag: Numeric, U: ClassTag](t: Tensor[T])
+    // dot product    
+    def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
+    def map(f: T => U): Tensor[U] = Tensor.map[T, U](t, f)
+    def -(that: T): Tensor[T] = Tensor.subtract(t, Tensor0D(that))
+    def -(that: Tensor[T]): Tensor[T] = Tensor.subtract(t, that)
+    def +(that: Tensor[T]): Tensor[T] = Tensor.plus(t, that)    
+    def sum: T = Tensor.sum(t)        
+    def split(fraction: Float): (Tensor[T], Tensor[T]) = Tensor.split(fraction, t)
+    // Hadamard product
+    def multiply(that: Tensor[T]): Tensor[T] = Tensor.multiply(t, that)
+    def batches(
+        batchSize: Int
+    ): Iterator[Array[Array[T]]] = Tensor.batches(t, batchSize)    
 
 case class Tensor0D[T: ClassTag](data: T) extends Tensor[T]:
   type A = T
@@ -89,38 +104,19 @@ object Tensor2D:
     data.slice(from, to)
 
 object ops:
-
-  implicit class TensorOps[T: ClassTag: Numeric](val t: Tensor[T]) {
-    // dot product
-    def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
-
-    def map[U: ClassTag](f: T => U): Tensor[U] = Tensor.map[T, U](t, f)
-    def -(that: T): Tensor[T] = Tensor.subtract(t, Tensor0D(that))
-    def -(that: Tensor[T]): Tensor[T] = Tensor.subtract(t, that)
-    def +(that: Tensor[T]): Tensor[T] = Tensor.plus(t, that)
+  extension [T: ClassTag](t: Tensor[T])
+    def T: Tensor[T] = Tensor.transpose(t) 
     def as1D: Tensor1D[T] = Tensor.as1D(t)
     def as2D: Tensor2D[T] = Tensor.as2D(t)
-    def sum: T = Tensor.sum(t)
-    def T: Tensor[T] = Tensor.transpose(t)
-    def split(fraction: Float): (Tensor[T], Tensor[T]) =
-      Tensor.split(fraction, t)
-    def batches(
-        batchSize: Int
-    ): Iterator[Array[Array[T]]] = Tensor.batches(t, batchSize)
 
-    // Hadamard product
-    def multiply(that: Tensor[T]): Tensor[T] = Tensor.multiply(t, that)
-  }
+  extension [T: ClassTag](t: T)
+    def as0D: Tensor0D[T] = Tensor0D(t)    
 
-  implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T) {
+  implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T):
     // dot product
     def *(that: Tensor[T]): Tensor[T] = Tensor.mul(Tensor0D(t), that)
-
     def -(that: Tensor[T]): Tensor[T] = Tensor.subtract(Tensor0D(t), that)
-
-    def as0D: Tensor0D[T] = Tensor0D(t)
-  }
-
+  
   extension [T: ClassTag: Numeric](t: Array[Tensor[T]]) 
     def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)  
   
