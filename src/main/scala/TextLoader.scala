@@ -5,6 +5,7 @@ import java.nio.file.Path
 import scala.io.Source
 import scala.reflect.ClassTag
 import scala.util.Using
+import ops._
 
 object TextLoader:
   val defaultDelimiter: String = ","
@@ -27,9 +28,11 @@ case class TextLoader(
     }
   )
 
-  def cols[T: ClassTag](range: (Int, Int)): Tensor2D[T] =
-    transform[T](Tensor2D.slice(data, None, Some(range)))
+  def cols[T: ClassTag](from: Int, to: Int): Tensor2D[T] =
+    transform[T](Tensor2D.slice(data, None, Some((from, to))))
 
   def col[T: ClassTag](i: Int): Tensor1D[T] =
     val col = Tensor2D.col(data, i)
     Tensor1D(transformArr[T](col))
+
+  def cols[T: ClassTag](i: Int): Tensor[T] = col(i).T

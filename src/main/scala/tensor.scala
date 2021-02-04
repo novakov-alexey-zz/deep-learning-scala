@@ -21,7 +21,8 @@ extension [T: ClassTag: Numeric, U: ClassTag](t: Tensor[T])
     def multiply(that: Tensor[T]): Tensor[T] = Tensor.multiply(t, that)
     def batches(
         batchSize: Int
-    ): Iterator[Array[Array[T]]] = Tensor.batches(t, batchSize)    
+    ): Iterator[Array[Array[T]]] = Tensor.batches(t, batchSize)
+    def equalRows(that: Tensor[T]): Int = Tensor.equalRows(t, that)    
 
 case class Tensor0D[T: ClassTag](data: T) extends Tensor[T]:
   type A = T
@@ -110,12 +111,12 @@ object ops:
     def as2D: Tensor2D[T] = Tensor.as2D(t)
 
   extension [T: ClassTag](t: T)
-    def as0D: Tensor0D[T] = Tensor0D(t)    
+    def as0D: Tensor0D[T] = Tensor0D(t)
 
   implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T):
     // dot product
     def *(that: Tensor[T]): Tensor[T] = Tensor.mul(Tensor0D(t), that)
-    def -(that: Tensor[T]): Tensor[T] = Tensor.subtract(Tensor0D(t), that)
+    def -(that: Tensor[T]): Tensor[T] = Tensor.subtract(Tensor0D(t), that)    
   
   extension [T: ClassTag: Numeric](t: Array[Tensor[T]]) 
     def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)  
@@ -128,6 +129,10 @@ object ops:
 
   extension [T: ClassTag: Numeric](t: List[Tensor[T]])
     def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)
+
+  extension [T: ClassTag: Numeric, U: ClassTag: Numeric](pair: (Tensor[T], Tensor[T]))
+    def map2(f: (T, T) => U): Tensor[U] = 
+      Tensor.map2(pair._1, pair._2, f)
 
   extension [T: ClassTag: Numeric](pair: (Tensor[T], Tensor[T]))
     def split(
@@ -245,6 +250,29 @@ object Tensor:
       case Tensor0D(data) => Tensor0D(f(data))
       case Tensor1D(data) => Tensor1D(data.map(f(_)))
       case Tensor2D(data) => Tensor2D(data.map(d => d.map(f(_))))
+  
+  private def map2[T: ClassTag, U: ClassTag](a: Array[T], b: Array[T], f: (T, T) => U): Array[U] = 
+    val res = Array.ofDim[U](a.length)
+    for i <- (0 until a.length).indices do
+      res(i) = f(a(i), b(i))
+    res  
+
+
+  def map2[T: ClassTag: Numeric, U: ClassTag: Numeric](a: Tensor[T], b: Tensor[T], f: (T, T) => U): Tensor[U] =
+    (a, b) match
+      case (Tensor0D(data), Tensor0D(data2)) => 
+        Tensor0D(f(data, data2))
+      case (Tensor1D(data), Tensor1D(data2)) =>                 
+        Tensor1D(map2(data, data2, f))
+      case (Tensor2D(data), Tensor2D(data2)) =>
+        val res = Array.ofDim[U](data.length, colsCount(data2))
+        for i <- (0 until data.length).indices do
+          res(i) = map2(data(i), data2(i), f)
+        Tensor2D(res)
+      case _ => sys.error(s"Both tensors must be the same dimenion: ${a.sizes} != ${b.sizes}")
+
+  private def colsCount[T: Numeric](a: Array[Array[T]]): Int =
+    a.headOption.map(_.length).getOrElse(0)
 
   private def scalarMul[T: ClassTag: Numeric](
       t: Tensor[T],
@@ -264,7 +292,7 @@ object Tensor:
       s"The number of columns in the first matrix should be equal to the number of rows in the second, ${a.head.length} != ${b.length}"
     )
     val rows = a.length
-    val cols = b.headOption.map(_.length).getOrElse(0)
+    val cols = colsCount(b)
     val res = Array.ofDim[T](rows, cols)
 
     for i <- (0 until rows).indices do
@@ -357,20 +385,20 @@ object Tensor:
       t: (Tensor[T], Tensor[T])
   ): ((Tensor[T], Tensor[T]), (Tensor[T], Tensor[T])) =
     val (l, r) = t
-    assert(l.length == r.length, "Both tensors must have the same size")
+    assert(l.length == r.length, s"Both tensors must have the same length, ${l.length} != ${r.length}")
     split(fraction, l) -> split(fraction, r)
 
   def multiply[T: Numeric: ClassTag](
       t1: Tensor[T],
       t2: Tensor[T]
-  ): Tensor[T] =
+  ): Tensor[T] =    
     assert(
       t1.length == t2.length,
       s"Both vectors must have the same length, ${t1.length} != ${t2.length}"
     )
     (t1, t2) match
       case (Tensor1D(data), Tensor1D(data2)) =>
-        Tensor1D(data.zip(data2).map { case (a, b) => a * b })
+        Tensor1D(data.zip(data2).map((a, b) => a * b))
       case (a @ Tensor2D(data), Tensor2D(data2)) =>
         val (rows, cols) = a.sizes2D
         val sum = Array.ofDim[T](rows, cols)
@@ -378,7 +406,7 @@ object Tensor:
           for j <- 0 until cols do
             sum(i)(j) = data(i)(j) * data2(i)(j)
         Tensor2D(sum)
-      case (a, b) => sys.error(s"Not implemented for:\n$a\n and\n$b")
+      case (a, b) => sys.error(s"Not implemented for:\n$a\nand\n$b")
 
   def batches[T: ClassTag: Numeric](
       t: Tensor[T],
@@ -388,3 +416,11 @@ object Tensor:
       case Tensor1D(_)    => as2D(t).data.grouped(batchSize)
       case Tensor2D(data) => data.grouped(batchSize)
       case Tensor0D(data) => Iterator(Array(Array(data)))
+
+  def equalRows[T: ClassTag](t1: Tensor[T], t2: Tensor[T]): Int = 
+    assert(t1.sizes == t2.sizes, sys.error(s"Tensors must be the same dimension: ${t1.sizes} != ${t2.sizes}"))
+    (t1, t2) match
+      case (Tensor0D(data), Tensor0D(data2)) => if data == data2 then 1 else 0
+      case (Tensor1D(data), Tensor1D(data2)) => data.zip(data2).foldLeft(0) { case (acc, (a, b)) => if a == b then acc + 1 else acc }
+      case (Tensor2D(data), Tensor2D(data2)) => data.zip(data2).foldLeft(0) { case (acc, (a, b)) => if a.sameElements(b) then acc + 1 else acc }
+      case _ => sys.error(s"Tensors must be the same dimension: ${t1.sizes} != ${t2.sizes}")

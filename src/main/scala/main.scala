@@ -48,12 +48,12 @@ import scala.reflect.ClassTag
   }
   
   val x = prepareData(data)
-  val y = dataLoader.col[Float](-1)
+  val y = dataLoader.cols[Float](-1)
   
   val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
   
   val start = System.currentTimeMillis()
-  val model = ann.train(xTrain, yTrain.as1D, epochs = 100)
+  val model = ann.train(xTrain, yTrain, epochs = 100)
   println(s"training time: ${(System.currentTimeMillis() - start) / 1000f} in sec")
   
   // Single test
@@ -67,4 +67,4 @@ import scala.reflect.ClassTag
   // Test Dataset
   val testPredicted = model.predict(xTest)
   val value = accuracy(yTest.as1D, testPredicted.as1D)
-  println(s"test accuracy = $value")
+  println(s"test accuracy = $value")  
