@@ -25,7 +25,7 @@ import scala.reflect.ClassTag
   
   val accuracy = accuracyMetric[Float]
   
-  val ann = Sequential[Float, MiniBatchGD](
+  val ann = Sequential[Float, SimpleGD](
     binaryCrossEntropy,
     learningRate = 0.05f,
     metric = accuracy,

@@ -96,10 +96,10 @@ sealed trait Optimizer[U]:
       learningRate: T
   ): List[Weight[T]]
 
-sealed trait MiniBatchGD
+type SimpleGD
 
 object optimizers:
-  given miniBatchGradientDescent: Optimizer[MiniBatchGD] with
+  given Optimizer[SimpleGD] with
     override def updateWeights[T: Numeric: ClassTag](
         weights: List[Weight[T]],
         activations: List[Activation[T]],
@@ -186,7 +186,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     learningRate: T,
     metric: Metric[T],
     batchSize: Int = 16,
-    layerStack: Int => List[Weight[T]] = (_: Int) => List.empty[Weight[T]],    
+    weightStack: Int => List[Weight[T]] = (_: Int) => List.empty[Weight[T]],    
     weights: List[Weight[T]] = Nil,
     losses: List[T] = Nil
 ) extends Model[T]:
@@ -197,8 +197,8 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     activate(x, weights).last.a
 
   def add(layer: Layer[T]): Sequential[T, U] =
-    copy(layerStack = (inputs) => {
-      val currentWeights = layerStack(inputs)
+    copy(weightStack = (inputs) => {
+      val currentWeights = weightStack(inputs)
       val prevInput =
         currentWeights.reverse.headOption.map(_.units).getOrElse(inputs)
       val w = random2D(prevInput, layer.units)
@@ -207,21 +207,21 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     })
 
   private def trainEpoch(
-      xBatches: Array[(Array[Array[T]], Array[Array[T]])],
+      batches: Array[(Array[Array[T]], Array[Array[T]])],
       weights: List[Weight[T]]
   ) =
     val (w, l, metricValue) =
-      xBatches.foldLeft(weights, List.empty[T], 0) {
-        case ((weights, batchLoss, metricAcc), (batch, actualBatch)) =>
+      batches.foldLeft(weights, List.empty[T], 0) {
+        case ((weights, batchLoss, metricAcc), (xBatch, yBatch)) =>
           // forward
-          val activations = activate(batch.as2D, weights)
-          val actual = actualBatch.as2D          
+          val activations = activate(xBatch.as2D, weights)
+          val actual = yBatch.as2D          
           val predicted = activations.last.a          
           val error = predicted - actual          
           val loss = lossFunc(actual, predicted)
 
           // backward
-          val updated = implicitly[Optimizer[U]].updateWeights(
+          val updated = summon[Optimizer[U]].updateWeights(
             weights,
             activations,
             error,
@@ -254,7 +254,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     copy(weights = Nil)
 
   private def getWeights(inputs: Int) =
-    if weights == Nil then layerStack(inputs)
+    if weights == Nil then weightStack(inputs)
     else weights
 
 trait Metric[T]:
@@ -282,8 +282,8 @@ object Metric:
         actual: Tensor[T],
         predicted: Tensor[T]
     ): Int =      
-        val yHatNormalized = predicted.map(predictedToBinary)
-        actual.equalRows(yHatNormalized)          
+        val predictedNormalized = predicted.map(predictedToBinary)
+        actual.equalRows(predictedNormalized)          
       
     def average(count: Int, correct: Int): Double =
       correct.toDouble / count

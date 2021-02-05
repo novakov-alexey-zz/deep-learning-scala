@@ -194,13 +194,13 @@ object Tensor:
       cols == vector.length,
       s"trailing axis must have the same size, $cols != ${vector.length}"
     )
-    val res = matrix.data.map(_.zip(vector.data).map { case (a, b) => a - b })
+    val res = matrix.data.map(_.zip(vector.data).map{(a, b) => a - b })
     Tensor2D(res)
 
   def plus[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match
       case (Tensor1D(data), Tensor1D(data2)) =>
-        Tensor1D(data.zip(data2).map { case (a, b) => a + b })
+        Tensor1D(data.zip(data2).map {(a, b) => a + b })
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ + data2)))
       case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) =>
@@ -248,15 +248,14 @@ object Tensor:
   def map[T: ClassTag, U: ClassTag](t: Tensor[T], f: T => U): Tensor[U] =
     t match
       case Tensor0D(data) => Tensor0D(f(data))
-      case Tensor1D(data) => Tensor1D(data.map(f(_)))
-      case Tensor2D(data) => Tensor2D(data.map(d => d.map(f(_))))
+      case Tensor1D(data) => Tensor1D(data.map(f))
+      case Tensor2D(data) => Tensor2D(data.map(_.map(f)))
   
   private def map2[T: ClassTag, U: ClassTag](a: Array[T], b: Array[T], f: (T, T) => U): Array[U] = 
     val res = Array.ofDim[U](a.length)
     for i <- (0 until a.length).indices do
       res(i) = f(a(i), b(i))
     res  
-
 
   def map2[T: ClassTag: Numeric, U: ClassTag: Numeric](a: Tensor[T], b: Tensor[T], f: (T, T) => U): Tensor[U] =
     (a, b) match
@@ -271,7 +270,7 @@ object Tensor:
         Tensor2D(res)
       case _ => sys.error(s"Both tensors must be the same dimenion: ${a.sizes} != ${b.sizes}")
 
-  private def colsCount[T: Numeric](a: Array[Array[T]]): Int =
+  private def colsCount[T](a: Array[Array[T]]): Int =
     a.headOption.map(_.length).getOrElse(0)
 
   private def scalarMul[T: ClassTag: Numeric](
@@ -420,7 +419,11 @@ object Tensor:
   def equalRows[T: ClassTag](t1: Tensor[T], t2: Tensor[T]): Int = 
     assert(t1.sizes == t2.sizes, sys.error(s"Tensors must be the same dimension: ${t1.sizes} != ${t2.sizes}"))
     (t1, t2) match
-      case (Tensor0D(data), Tensor0D(data2)) => if data == data2 then 1 else 0
-      case (Tensor1D(data), Tensor1D(data2)) => data.zip(data2).foldLeft(0) { case (acc, (a, b)) => if a == b then acc + 1 else acc }
-      case (Tensor2D(data), Tensor2D(data2)) => data.zip(data2).foldLeft(0) { case (acc, (a, b)) => if a.sameElements(b) then acc + 1 else acc }
-      case _ => sys.error(s"Tensors must be the same dimension: ${t1.sizes} != ${t2.sizes}")
+      case (Tensor0D(data), Tensor0D(data2)) => 
+        if data == data2 then 1 else 0
+      case (Tensor1D(data), Tensor1D(data2)) => 
+        data.zip(data2).foldLeft(0) { case (acc, (a, b)) => if a == b then acc + 1 else acc }
+      case (Tensor2D(data), Tensor2D(data2)) => 
+        data.zip(data2).foldLeft(0) { case (acc, (a, b)) => if a.sameElements(b) then acc + 1 else acc }
+      case _ => 
+        sys.error(s"Tensors must be the same dimension: ${t1.sizes} != ${t2.sizes}")
