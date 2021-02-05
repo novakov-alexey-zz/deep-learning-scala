@@ -6,7 +6,7 @@ import ops._
 import optimizers.given
 import RandomGen._
 
-import java.nio.file.Paths
+import java.nio.file.Path
 import scala.reflect.ClassTag
 
 @main def starter() = 
@@ -35,7 +35,7 @@ import scala.reflect.ClassTag
     .add(Dense(relu, 6))    
     .add(Dense(sigmoid))
   
-  val dataLoader = TextLoader(Paths.get("data", "Churn_Modelling.csv")).load()
+  val dataLoader = TextLoader(Path.of("data", "Churn_Modelling.csv")).load()
   val data = dataLoader.cols[String](3, -1)
   
   val encoders = createEncoders[Float](data)
@@ -66,5 +66,5 @@ import scala.reflect.ClassTag
   
   // Test Dataset
   val testPredicted = model.predict(xTest)
-  val value = accuracy(yTest.as1D, testPredicted.as1D)
+  val value = accuracy(yTest, testPredicted)
   println(s"test accuracy = $value")  
