@@ -1,8 +1,8 @@
 # Deep Learning in Scala from scratch
 
-Example of mini-library implementation for Artificial Neural Networks.
+Example of mini-library implementation for Artificial Neural Networks training and scoring.
 
-This implementation includes:
+__Implementation includes:__
 
 1. Mini-library for subset of Tensor calculus
 1. Mini-library for data preparation
