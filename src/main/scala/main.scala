@@ -17,9 +17,9 @@ import scala.reflect.ClassTag
     val encoder = LabelEncoder[String]().fit(data.col(2))
     val hotEncoder = OneHotEncoder[String, T]().fit(data.col(1))
     
-    val label = x => encoder.transform(x, 2)
-    val hot = x => hotEncoder.transform(x, 1)
-    val typeTransform = (x: Tensor2D[String]) => transform[T](x.data)
+    val label = t => encoder.transform(t, 2)
+    val hot = t => hotEncoder.transform(t, 1)
+    val typeTransform = (t: Tensor2D[String]) => transform[T](t.data)
     
     label andThen hot andThen typeTransform
   
@@ -27,9 +27,9 @@ import scala.reflect.ClassTag
   
   val ann = Sequential[Float, SimpleGD](
     binaryCrossEntropy,
-    learningRate = 0.05f,
+    learningRate = 0.019f,
     metric = accuracy,
-    batchSize = 32
+    batchSize = 64
   )
     .add(Dense(relu, 6))
     .add(Dense(relu, 6))    
@@ -42,8 +42,8 @@ import scala.reflect.ClassTag
   val numericData = encoders(data)
   val scaler = StandardScaler[Float]().fit(numericData)
   
-  val prepareData = (d: Tensor2D[String]) => {
-    val numericData = encoders(d)
+  val prepareData = (t: Tensor2D[String]) => {
+    val numericData = encoders(t)
     scaler.transform(numericData)
   }
   
