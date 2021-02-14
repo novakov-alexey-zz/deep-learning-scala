@@ -11,6 +11,6 @@ object RandomGen:
   def zeros[T: Numeric: ClassTag](length: Int)(using n: Numeric[T]): Tensor[T] =    
     Tensor1D(Array.fill(length)(n.zero))
 
-given uniform: RandomGen[Float] with
-   override def gen: Float = 
-     math.random().toFloat + 0.001f
+  given uniform: RandomGen[Float] with
+    override def gen: Float = 
+      math.random().toFloat + 0.001f

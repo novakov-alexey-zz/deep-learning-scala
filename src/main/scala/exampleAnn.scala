@@ -9,7 +9,7 @@ import RandomGen._
 import java.nio.file.Path
 import scala.reflect.ClassTag
 
-@main def starter() = 
+@main def ann() = 
 
   def createEncoders[T: Numeric: ClassTag](
     data: Tensor2D[String]
@@ -28,7 +28,7 @@ import scala.reflect.ClassTag
   val ann = Sequential[Float, SimpleGD](
     binaryCrossEntropy,
     learningRate = 0.019f,
-    metric = accuracy,
+    metrics = List(accuracy),
     batchSize = 64
   )
     .add(Dense(relu, 6))

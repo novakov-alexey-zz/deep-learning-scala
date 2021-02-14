@@ -8,7 +8,8 @@ import scala.collection.mutable.ArrayBuffer
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
 
-sealed trait ActivationFunc[T] extends (Tensor[T] => Tensor[T]):
+trait ActivationFunc[T] extends (Tensor[T] => Tensor[T]):
+  val name: String
   def apply(x: Tensor[T]): Tensor[T]
   def derivative(x: Tensor[T]): Tensor[T]
 
@@ -21,7 +22,7 @@ object ActivationFunc:
     override def derivative(x: Tensor[Float]): Tensor[Float] =
       Tensor.map(x, (t: Float) => if t < 0 then 0 else 1)
 
-    override def toString() = "relu"
+    override val name = "relu"
   }
 
   val sigmoid: ActivationFunc[Float] = new ActivationFunc[Float] {
@@ -36,9 +37,17 @@ object ActivationFunc:
           math.exp(-t).toFloat / math.pow(1 + math.exp(-t).toFloat, 2).toFloat
       )
     
-    override def toString() = "sigmoid"
+    override val name = "sigmoid"
   }
-sealed trait Loss[T]:
+
+  val noActivation = new ActivationFunc[Float] {
+    override def apply(x: Tensor[Float]): Tensor[Float] = x
+    override def derivative(x: Tensor[Float]): Tensor[Float] = x
+    override val name = "no-activation"    
+  }
+
+
+trait Loss[T]:
   def apply(
       actual: Tensor[T],
       predicted: Tensor[T]
@@ -61,7 +70,7 @@ object Loss:
         (f(a, b), 1)
       case _ => sys.error(s"Both tensors must be the same shape: ${t1.sizes} != ${t2.sizes}")
 
-  def meanSquaredError[T: ClassTag](using n: Numeric[T]): Loss[T] = new Loss[T] {
+  def meanSquareError[T: ClassTag: Numeric]: Loss[T] = new Loss[T] {
     def calc(a: T, b: T): T =      
       transformAny[Double, T](math.pow(transformAny[T, Double](a - b), 2)) 
 
@@ -135,7 +144,7 @@ sealed trait Layer[T]:
   def f: ActivationFunc[T]
 
 case class Dense[T](
-    f: ActivationFunc[T],
+    f: ActivationFunc[T] = ActivationFunc.noActivation,
     units: Int = 1
 ) extends Layer[T]
 
@@ -146,7 +155,7 @@ case class Weight[T](
     units: Int
 ) {
   override def toString() = 
-    s"\n(\nweight = $w,\nbias = $b,\nf = $f,\nunits = $units)"
+    s"\n(\nweight = $w,\nbias = $b,\nf = ${f.name},\nunits = $units)"
 }
 
 /*
@@ -184,7 +193,7 @@ object Sequential:
 case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     lossFunc: Loss[T],
     learningRate: T,
-    metric: Metric[T],
+    metrics: List[Metric[T]] = Nil,
     batchSize: Int = 16,
     weightStack: Int => List[Weight[T]] = (_: Int) => List.empty[Weight[T]],    
     weights: List[Weight[T]] = Nil,
@@ -211,7 +220,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
       weights: List[Weight[T]]
   ) =
     val (w, l, metricValue) =
-      batches.foldLeft(weights, List.empty[T], 0) {
+      batches.foldLeft(weights, List.empty[T], List.fill(metrics.length)(0)) {
         case ((weights, batchLoss, metricAcc), (xBatch, yBatch)) =>
           // forward
           val activations = activate(xBatch.as2D, weights)
@@ -227,8 +236,8 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
             error,
             learningRate
           )
-          val metricValue = metric.calculate(actual, predicted)
-          (updated, batchLoss :+ loss, metricAcc + metricValue)
+          val metricValues = metrics.map(m => m.calculate(actual, predicted))
+          (updated, batchLoss :+ loss, metricAcc.zip(metricValues).map(_ + _))
       }    
     (w, getAvgLoss(l), metricValue)
 
@@ -242,9 +251,10 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
       (1 to epochs).foldLeft((w, List.empty[T])) {
         case ((weights, losses), epoch) =>
           val (w, avgLoss, metricValue) = trainEpoch(xBatches, weights)
-          val metricAvg = metric.average(x.length, metricValue)
+          val metricAvg = metrics.zip(metricValue).map((m, value) => m -> m.average(x.length, value))
+          val metricsStat = metricAvg.map((m, avg) => s"${m.name}: $avg").mkString(", metrics: [", ";", "]")
           println(
-            s"epoch: $epoch/$epochs, avg. loss: $avgLoss, ${metric.name}: $metricAvg"
+            s"epoch: $epoch/$epochs, avg. loss: $avgLoss${if (metrics.nonEmpty) metricsStat else ""}"
           )
           (w, losses :+ avgLoss)
       }
@@ -265,7 +275,8 @@ trait Metric[T]:
       predicted: Tensor[T]
   ): Int
 
-  def average(count: Int, correct: Int): Double
+  def average(count: Int, correct: Int): Double =
+    correct.toDouble / count
 
   def apply(actual: Tensor[T], predicted: Tensor[T]): Double =
     val correct = calculate(actual, predicted)
@@ -283,8 +294,5 @@ object Metric:
         predicted: Tensor[T]
     ): Int =      
         val predictedNormalized = predicted.map(predictedToBinary)
-        actual.equalRows(predictedNormalized)          
-      
-    def average(count: Int, correct: Int): Double =
-      correct.toDouble / count
+        actual.equalRows(predictedNormalized)      
   }

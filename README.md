@@ -12,4 +12,6 @@ __Implementation includes:__
 1. Pluggable training metric calculation
 
 
-See [src/main/scala/main.scala](src/main/scala/main.scala) as an of public API.
+See examples: 
+- [Classification with Artificial Neural Network](src/main/scala/exampleAnn.scala)
+- [Linear Regression](src/main/scala/exampleLinearRegression.scala)
