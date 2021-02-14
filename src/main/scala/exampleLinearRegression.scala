@@ -16,15 +16,12 @@ import scala.util.Random
   def batch(batchSize: Int): (ArrayBuffer[Float], ArrayBuffer[Float]) = {
     val inputs = ArrayBuffer.empty[Float]
     val outputs = ArrayBuffer.empty[Float]
-    var i = 0
-    while (i < batchSize) {
-      val input = random.nextFloat()
-      inputs += input
-      outputs += weight * input
-      i += 1
+    (0 until batchSize).foldLeft(inputs, outputs) { case ((i, o), _) =>
+        val input = random.nextFloat()
+        i += input
+        o += weight * input
+        (i, o)
     }
-
-    (inputs, outputs)    
   }
 
   val ann = Sequential[Float, SimpleGD](
