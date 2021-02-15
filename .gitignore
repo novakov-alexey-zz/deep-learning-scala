@@ -7,3 +7,5 @@ target
 .bsp
 metals.sbt
 .bloop
+
+notebooks

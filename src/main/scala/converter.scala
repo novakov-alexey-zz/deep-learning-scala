@@ -38,5 +38,6 @@ object converter:
       case (String_, Double_) => a.toString.toDouble.asInstanceOf[B]
       case (Float_, Double_)  => a.asInstanceOf[Float].toDouble.asInstanceOf[B]
       case (Double_, Float_)  => a.asInstanceOf[Double].toFloat.asInstanceOf[B]
+      case (Double_, Double_)  => a.asInstanceOf[B]
       case (Float_, Float_)   => a.asInstanceOf[B]
       case (Int_, _)          => transformInt[B](a.asInstanceOf[Int])

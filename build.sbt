@@ -29,7 +29,7 @@ scalacOptions ++= {
       "UTF-8",
       "-feature",
       "-unchecked",
-      "-language:implicitConversions",
+      "-language:implicitConversions"
 //      "-indent",
 //      "-rewrite"
       // "-new-syntax",

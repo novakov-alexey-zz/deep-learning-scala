@@ -14,35 +14,35 @@ trait ActivationFunc[T] extends (Tensor[T] => Tensor[T]):
   def derivative(x: Tensor[T]): Tensor[T]
 
 object ActivationFunc:
-  val relu: ActivationFunc[Float] = new ActivationFunc[Float] {
+  def relu[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T] {
 
-    override def apply(x: Tensor[Float]): Tensor[Float] =
-      Tensor.map(x, (t: Float) => math.max(0, t))
+    override def apply(x: Tensor[T]): Tensor[T] =
+      Tensor.map(x, (t: T) => transformAny[Double, T](math.max(0, n.toDouble(t))))
 
-    override def derivative(x: Tensor[Float]): Tensor[Float] =
-      Tensor.map(x, (t: Float) => if t < 0 then 0 else 1)
+    override def derivative(x: Tensor[T]): Tensor[T] =
+      Tensor.map(x, (t: T) => transformAny[Double, T](if n.toDouble(t) < 0 then 0 else 1))
 
     override val name = "relu"
   }
 
-  val sigmoid: ActivationFunc[Float] = new ActivationFunc[Float] {
+  def sigmoid[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T] {
 
-    override def apply(x: Tensor[Float]): Tensor[Float] =
-      Tensor.map(x, (t: Float) => 1 / (1 + math.exp(-t).toFloat))
+    override def apply(x: Tensor[T]): Tensor[T] =
+      Tensor.map(x, (t: T) => transformAny[Double,T](1 / (1 + math.exp(-n.toDouble(t)))))
 
-    override def derivative(x: Tensor[Float]): Tensor[Float] =
+    override def derivative(x: Tensor[T]): Tensor[T] =
       Tensor.map(
         x,
-        (t: Float) =>
-          math.exp(-t).toFloat / math.pow(1 + math.exp(-t).toFloat, 2).toFloat
+        (t: T) =>
+          transformAny[Double, T](math.exp(-n.toDouble(t)) / math.pow(1 + math.exp(-n.toDouble(t)), 2))
       )
     
     override val name = "sigmoid"
   }
 
-  val noActivation = new ActivationFunc[Float] {
-    override def apply(x: Tensor[Float]): Tensor[Float] = x
-    override def derivative(x: Tensor[Float]): Tensor[Float] = x
+  def noActivation[T] = new ActivationFunc[T] {
+    override def apply(x: Tensor[T]): Tensor[T] = x
+    override def derivative(x: Tensor[T]): Tensor[T] = x
     override val name = "no-activation"    
   }
 
@@ -144,7 +144,7 @@ sealed trait Layer[T]:
   def f: ActivationFunc[T]
 
 case class Dense[T](
-    f: ActivationFunc[T] = ActivationFunc.noActivation,
+    f: ActivationFunc[T] = ActivationFunc.noActivation[T],
     units: Int = 1
 ) extends Layer[T]
 

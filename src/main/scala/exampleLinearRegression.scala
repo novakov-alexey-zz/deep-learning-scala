@@ -10,21 +10,21 @@ import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
 @main def linearRegression() =       
-  val random = new Random()
+  val random = new Random(100)
   val weight = random.nextFloat()
     
-  def batch(batchSize: Int): (ArrayBuffer[Float], ArrayBuffer[Float]) = {
-    val inputs = ArrayBuffer.empty[Float]
-    val outputs = ArrayBuffer.empty[Float]
+  def batch(batchSize: Int): (ArrayBuffer[Double], ArrayBuffer[Double]) = {
+    val inputs = ArrayBuffer.empty[Double]
+    val outputs = ArrayBuffer.empty[Double]
     (0 until batchSize).foldLeft(inputs, outputs) { case ((i, o), _) =>
-        val input = random.nextFloat()
+        val input = random.nextDouble()
         i += input
         o += weight * input
         (i, o)
     }
   }
 
-  val ann = Sequential[Float, SimpleGD](
+  val ann = Sequential[Double, SimpleGD](
     meanSquareError,
     learningRate = 0.015f,    
     batchSize = 64
@@ -42,5 +42,5 @@ import scala.util.Random
 
   // Test Dataset
   val testPredicted = model.predict(xTest)  
-  val value = meanSquareError[Float].apply(yTest.T, testPredicted)
+  val value = meanSquareError[Double].apply(yTest.T, testPredicted)
   println(s"test meanSquareError = $value")  

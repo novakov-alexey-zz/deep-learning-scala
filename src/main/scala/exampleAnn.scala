@@ -23,11 +23,11 @@ import scala.reflect.ClassTag
     
     label andThen hot andThen typeTransform
   
-  val accuracy = accuracyMetric[Float]
+  val accuracy = accuracyMetric[Double]
   
-  val ann = Sequential[Float, SimpleGD](
+  val ann = Sequential[Double, SimpleGD](
     binaryCrossEntropy,
-    learningRate = 0.019f,
+    learningRate = 0.019d,
     metrics = List(accuracy),
     batchSize = 64
   )
@@ -38,9 +38,9 @@ import scala.reflect.ClassTag
   val dataLoader = TextLoader(Path.of("data", "Churn_Modelling.csv")).load()
   val data = dataLoader.cols[String](3, -1)
   
-  val encoders = createEncoders[Float](data)
+  val encoders = createEncoders[Double](data)
   val numericData = encoders(data)
-  val scaler = StandardScaler[Float]().fit(numericData)
+  val scaler = StandardScaler[Double]().fit(numericData)
   
   val prepareData = (t: Tensor2D[String]) => {
     val numericData = encoders(t)
@@ -48,7 +48,7 @@ import scala.reflect.ClassTag
   }
   
   val x = prepareData(data)
-  val y = dataLoader.cols[Float](-1)
+  val y = dataLoader.cols[Double](-1)
   
   val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
   
