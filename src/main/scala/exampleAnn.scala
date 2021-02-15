@@ -8,6 +8,9 @@ import RandomGen._
 
 import java.nio.file.Path
 import scala.reflect.ClassTag
+import scala.util.Using
+import java.io.File
+import java.io.PrintWriter
 
 @main def ann() = 
 
@@ -68,3 +71,12 @@ import scala.reflect.ClassTag
   val testPredicted = model.predict(xTest)
   val value = accuracy(yTest, testPredicted)
   println(s"test accuracy = $value")  
+
+  Using.resource(new PrintWriter(new File("metrics/ann.csv"))) { w =>
+    w.write("epoch,loss,accuracy")
+    val acc = model.metricValues.getOrElse(accuracy.name, Nil)
+    model.losses.zip(acc).foldLeft(1) { case (epoch, (loss, acc)) =>      
+      w.write(s"\n$epoch,$loss,$acc")
+      epoch + 1
+    }
+  }

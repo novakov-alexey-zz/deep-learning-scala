@@ -14,4 +14,4 @@ object RandomGen:
 
   given uniform[T: Numeric: ClassTag]: RandomGen[T] with
     override def gen: T = 
-      transformAny[Float, T](math.random().toFloat + 0.001f)
+      transformAny[Double, T](math.random().toDouble + 0.001d)

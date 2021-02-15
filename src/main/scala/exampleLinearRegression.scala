@@ -7,7 +7,9 @@ import RandomGen.uniform
 import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
 import scala.collection.mutable.ArrayBuffer
-import scala.util.Random
+import scala.util.{Random, Using}
+import java.io.File
+import java.io.PrintWriter
 
 @main def linearRegression() =       
   val random = new Random(100)
@@ -26,7 +28,7 @@ import scala.util.Random
 
   val ann = Sequential[Double, SimpleGD](
     meanSquareError,
-    learningRate = 0.015f,    
+    learningRate = 0.0015f,    
     batchSize = 64
   ).add(Dense())    
 
@@ -43,4 +45,12 @@ import scala.util.Random
   // Test Dataset
   val testPredicted = model.predict(xTest)  
   val value = meanSquareError[Double].apply(yTest.T, testPredicted)
-  println(s"test meanSquareError = $value")  
+  println(s"test meanSquareError = $value")
+
+  Using.resource(new PrintWriter(new File("metrics/lr.csv"))) { w =>
+    w.write("epoch,loss")
+    model.losses.foldLeft(1) { case (epoch, l) =>      
+      w.write(s"\n$epoch,$l")
+      epoch + 1
+    }
+  }

@@ -170,6 +170,7 @@ sealed trait Model[T]:
   def currentWeights: List[Weight[T]]
   def predict(x: Tensor[T]): Tensor[T]
   def losses: List[T]
+  def metricValues: Map[String, List[Double]]
 
 object Model:
   def getAvgLoss[T: ClassTag](losses: List[T])(using num: Numeric[T]): T =
@@ -197,7 +198,8 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     batchSize: Int = 16,
     weightStack: Int => List[Weight[T]] = (_: Int) => List.empty[Weight[T]],    
     weights: List[Weight[T]] = Nil,
-    losses: List[T] = Nil
+    losses: List[T] = Nil,
+    metricValues: Map[String, List[Double]] = Map.empty
 ) extends Model[T]:
 
   def currentWeights: List[Weight[T]] = weights
@@ -247,18 +249,22 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     lazy val xBatches = x.batches(batchSize).zip(actualBatches).toArray
     lazy val w = getWeights(inputs)
 
-    val (updatedWeights, epochLosses) =
-      (1 to epochs).foldLeft((w, List.empty[T])) {
-        case ((weights, losses), epoch) =>
+    val (updatedWeights, epochLosses, metricValues) =
+      (1 to epochs).foldLeft((w, List.empty[T], Map.empty[String, List[Double]])) {
+        case ((weights, losses, metricsMap), epoch) =>
           val (w, avgLoss, metricValue) = trainEpoch(xBatches, weights)
           val metricAvg = metrics.zip(metricValue).map((m, value) => m -> m.average(x.length, value))
           val metricsStat = metricAvg.map((m, avg) => s"${m.name}: $avg").mkString(", metrics: [", ";", "]")
           println(
             s"epoch: $epoch/$epochs, avg. loss: $avgLoss${if (metrics.nonEmpty) metricsStat else ""}"
           )
-          (w, losses :+ avgLoss)
+          val epochMetrics = metricAvg.foldLeft(Map.empty[String, List[Double]]){ case (acc, (m, v)) => 
+            val updated = metricsMap.getOrElse(m.name, List.empty[Double]) :+ v
+            acc + (m.name -> updated)
+          }
+          (w, losses :+ avgLoss, epochMetrics)
       }
-    copy(weights = updatedWeights, losses = epochLosses)
+    copy(weights = updatedWeights, losses = epochLosses, metricValues = metricValues)
 
   def reset(): Model[T] =
     copy(weights = Nil)

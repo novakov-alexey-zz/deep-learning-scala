@@ -9,3 +9,4 @@ metals.sbt
 .bloop
 
 notebooks
+metrics
