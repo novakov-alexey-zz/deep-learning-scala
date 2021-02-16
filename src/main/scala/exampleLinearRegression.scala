@@ -8,12 +8,15 @@ import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Random, Using}
-import java.io.File
-import java.io.PrintWriter
+import scala.concurrent.{Future, Await}
+import scala.concurrent.duration._
+import scala.concurrent.ExecutionContext.Implicits.global
+import java.io.{File,PrintWriter}
 
 @main def linearRegression() =       
   val random = new Random(100)
   val weight = random.nextFloat()
+  val bias = random.nextFloat()
     
   def batch(batchSize: Int): (ArrayBuffer[Double], ArrayBuffer[Double]) = {
     val inputs = ArrayBuffer.empty[Double]
@@ -21,7 +24,7 @@ import java.io.PrintWriter
     (0 until batchSize).foldLeft(inputs, outputs) { case ((i, o), _) =>
         val input = random.nextDouble()
         i += input
-        o += weight * input
+        o += bias + weight * input 
         (i, o)
     }
   }
@@ -41,16 +44,45 @@ import java.io.PrintWriter
 
   println(s"current weight: ${model.currentWeights}")
   println(s"true weight: $weight")
+  println(s"true bias: $bias")
 
   // Test Dataset
   val testPredicted = model.predict(xTest)  
   val value = meanSquareError[Double].apply(yTest.T, testPredicted)
   println(s"test meanSquareError = $value")
 
-  Using.resource(new PrintWriter(new File("metrics/lr.csv"))) { w =>
-    w.write("epoch,loss")
-    model.losses.foldLeft(1) { case (epoch, l) =>      
-      w.write(s"\n$epoch,$l")
-      epoch + 1
+  //Store loss metric into CSV file
+  val lossData = model.losses.zipWithIndex.map((l,i) => List(i.toString, l.toString))
+  store("metrics/lr.csv", "epoch,loss", lossData)
+
+  // Loss Surface calculation
+  val weightsF = Future {
+    (0 until 200).foldLeft((0.001d, ArrayBuffer.empty[Double])) { case ((n, acc), _) =>
+      (n + Random.between(0.001d, 0.02d), acc :+ n)
+    }._2.toList
+  }
+  val biasesF = Future { 
+    (0 until 200).foldLeft((0.1d, ArrayBuffer.empty[Double])) { case ((n, acc), _) =>
+      (n + Random.between(0.1d, 0.3d), acc :+ n)
+    }._2.toList
+  }
+
+  val result = Await.result(
+    (for {
+      weight <- weightsF
+      biases <- biasesF
+    } yield (weight, biases)), 
+    60.seconds)
+  val (weights, biases) = result
+  
+  val losses = weights.map { w =>
+    biases.foldLeft(ArrayBuffer.empty[Double]) { (acc,b) =>
+      val loss = ann.loss(x.T, y.T, List(Weight(w.as0D, b.as0D)))  
+      acc :+ loss
     }
   }
+  
+  val metricsData = weights.zip(biases).zip(losses)
+    .map{ case ((w, b), l) => List(w.toString, b.toString, l.mkString("\"", ",", "\"")) }
+  
+  store("metrics/lr-surface.csv", "w,b,l", metricsData)

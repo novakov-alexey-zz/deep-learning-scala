@@ -1,6 +1,6 @@
 import ActivationFunc._
 import Loss._
-import Metric.{accuracyMetric, predictedToBinary}
+import Metric.{accuracyBinaryClassification, predictedToBinary}
 import converter.transform
 import ops._
 import optimizers.given
@@ -26,7 +26,7 @@ import java.io.PrintWriter
     
     label andThen hot andThen typeTransform
   
-  val accuracy = accuracyMetric[Double]
+  val accuracy = accuracyBinaryClassification[Double]
   
   val ann = Sequential[Double, SimpleGD](
     binaryCrossEntropy,
@@ -72,11 +72,21 @@ import java.io.PrintWriter
   val value = accuracy(yTest, testPredicted)
   println(s"test accuracy = $value")  
 
+  val header = s"epoch,loss,${model.metricValues.map(_._1.name).mkString(",")}"
+  val acc = model.metricValues.headOption.map(_._2).getOrElse(Nil)
+  val lrData = model.losses.zip(acc).zipWithIndex.map { case ((loss, acc), epoch) =>      
+    List(epoch.toString, loss.toString, acc.toString)      
+  } 
+  store("metrics/ann.csv", header, lrData)
+
   Using.resource(new PrintWriter(new File("metrics/ann.csv"))) { w =>
-    w.write("epoch,loss,accuracy")
-    val acc = model.metricValues.getOrElse(accuracy.name, Nil)
+    w.write(s"epoch,loss,${model.metricValues.map(_._1.name).mkString(",")}")
+    val acc = model.metricValues.headOption.map(_._2).getOrElse(Nil)
     model.losses.zip(acc).foldLeft(1) { case (epoch, (loss, acc)) =>      
       w.write(s"\n$epoch,$loss,$acc")
       epoch + 1
     }
   }
+
+
+

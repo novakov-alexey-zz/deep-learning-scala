@@ -151,8 +151,8 @@ case class Dense[T](
 case class Weight[T](
     w: Tensor[T],
     b: Tensor[T],
-    f: ActivationFunc[T],
-    units: Int
+    f: ActivationFunc[T] = ActivationFunc.noActivation[T],
+    units: Int = 1
 ) {
   override def toString() = 
     s"\n(\nweight = $w,\nbias = $b,\nf = ${f.name},\nunits = $units)"
@@ -168,9 +168,9 @@ sealed trait Model[T]:
   def reset(): Model[T]
   def train(x: Tensor[T], y: Tensor[T], epochs: Int): Model[T]
   def currentWeights: List[Weight[T]]
-  def predict(x: Tensor[T]): Tensor[T]
+  def predict(x: Tensor[T], weights: List[Weight[T]] = currentWeights): Tensor[T]
   def losses: List[T]
-  def metricValues: Map[String, List[Double]]
+  def metricValues: List[(Metric[T], List[Double])]
 
 object Model:
   def getAvgLoss[T: ClassTag](losses: List[T])(using num: Numeric[T]): T =
@@ -191,7 +191,7 @@ object Sequential:
       ._2
       .toList
 
-case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
+case class Sequential[T: ClassTag: RandomGen: Numeric, U](
     lossFunc: Loss[T],
     learningRate: T,
     metrics: List[Metric[T]] = Nil,
@@ -199,19 +199,22 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     weightStack: Int => List[Weight[T]] = (_: Int) => List.empty[Weight[T]],    
     weights: List[Weight[T]] = Nil,
     losses: List[T] = Nil,
-    metricValues: Map[String, List[Double]] = Map.empty
-) extends Model[T]:
+    metricValues: List[(Metric[T], List[Double])] = Nil
+)(using optimizer: Optimizer[U]) extends Model[T]:
 
   def currentWeights: List[Weight[T]] = weights
 
-  def predict(x: Tensor[T]): Tensor[T] =
-    activate(x, weights).last.a
+  def predict(x: Tensor[T], w: List[Weight[T]] = weights): Tensor[T] =
+    activate(x, w).last.a
+
+  def loss(x: Tensor[T], y: Tensor[T], w: List[Weight[T]]): T =
+    val predicted = predict(x, w)    
+    lossFunc(y, predicted)  
 
   def add(layer: Layer[T]): Sequential[T, U] =
     copy(weightStack = (inputs) => {
       val currentWeights = weightStack(inputs)
-      val prevInput =
-        currentWeights.reverse.headOption.map(_.units).getOrElse(inputs)
+      val prevInput = currentWeights.lastOption.map(_.units).getOrElse(inputs)
       val w = random2D(prevInput, layer.units)
       val b = zeros(layer.units)
       (currentWeights :+ Weight(w, b, layer.f, layer.units))
@@ -223,7 +226,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
   ) =
     val (w, l, metricValue) =
       batches.foldLeft(weights, List.empty[T], List.fill(metrics.length)(0)) {
-        case ((weights, batchLoss, metricAcc), (xBatch, yBatch)) =>
+        case ((weights, batchLoss, epochMetrics), (xBatch, yBatch)) =>
           // forward
           val activations = activate(xBatch.as2D, weights)
           val actual = yBatch.as2D          
@@ -232,14 +235,16 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
           val loss = lossFunc(actual, predicted)
 
           // backward
-          val updated = summon[Optimizer[U]].updateWeights(
+          val updated = optimizer.updateWeights(
             weights,
             activations,
             error,
             learningRate
           )
-          val metricValues = metrics.map(m => m.calculate(actual, predicted))
-          (updated, batchLoss :+ loss, metricAcc.zip(metricValues).map(_ + _))
+          val metricValues = metrics
+            .map(_.calculate(actual, predicted))
+            .zip(epochMetrics).map(_ + _)
+          (updated, batchLoss :+ loss, metricValues)
       }    
     (w, getAvgLoss(l), metricValue)
 
@@ -248,23 +253,28 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U: Optimizer](
     lazy val actualBatches = y.batches(batchSize).toArray
     lazy val xBatches = x.batches(batchSize).zip(actualBatches).toArray
     lazy val w = getWeights(inputs)
-
+    
+    val emptyMetrics = metrics.map(_ -> List.empty[Double])
     val (updatedWeights, epochLosses, metricValues) =
-      (1 to epochs).foldLeft((w, List.empty[T], Map.empty[String, List[Double]])) {
-        case ((weights, losses, metricsMap), epoch) =>
-          val (w, avgLoss, metricValue) = trainEpoch(xBatches, weights)
-          val metricAvg = metrics.zip(metricValue).map((m, value) => m -> m.average(x.length, value))
-          val metricsStat = metricAvg.map((m, avg) => s"${m.name}: $avg").mkString(", metrics: [", ";", "]")
-          println(
-            s"epoch: $epoch/$epochs, avg. loss: $avgLoss${if (metrics.nonEmpty) metricsStat else ""}"
-          )
-          val epochMetrics = metricAvg.foldLeft(Map.empty[String, List[Double]]){ case (acc, (m, v)) => 
-            val updated = metricsMap.getOrElse(m.name, List.empty[Double]) :+ v
-            acc + (m.name -> updated)
+      (1 to epochs).foldLeft(w, List.empty[T], emptyMetrics) {
+        case ((weights, losses, metricsList), epoch) =>
+          val (w, avgLoss, epochMetric) = trainEpoch(xBatches, weights)
+          
+          val epochMetricAvg = metrics.zip(epochMetric).map((m, value) => m -> m.average(x.length, value))
+          printMetrics(epoch, epochs, avgLoss, epochMetricAvg)          
+          val epochMetrics = epochMetricAvg.zip(metricsList).map { 
+            case ((epochMetric, v), (trainingMetric, values)) => trainingMetric -> (values :+ v)
           }
+
           (w, losses :+ avgLoss, epochMetrics)
       }
     copy(weights = updatedWeights, losses = epochLosses, metricValues = metricValues)
+
+  private def printMetrics(epoch: Int, epochs: Int, avgLoss: T, values: List[(Metric[T], Double)]) = 
+    val metricsStat = values.map((m, avg) => s"${m.name}: $avg").mkString(", metrics: [", ";", "]")
+    println(
+      s"epoch: $epoch/$epochs, avg. loss: $avgLoss${if (metrics.nonEmpty) metricsStat else ""}"
+    )
 
   def reset(): Model[T] =
     copy(weights = Nil)
@@ -292,7 +302,7 @@ object Metric:
   def predictedToBinary[T](v: T)(using n: Numeric[T]): T =
     if n.toDouble(v) > 0.5 then n.one else n.zero
 
-  def accuracyMetric[T: ClassTag: Numeric]: Metric[T] = new Metric[T] {
+  def accuracyBinaryClassification[T: ClassTag: Numeric]: Metric[T] = new Metric[T] {
     val name = "accuracy"
 
     def calculate(
