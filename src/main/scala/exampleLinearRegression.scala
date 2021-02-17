@@ -31,7 +31,7 @@ import java.io.{File,PrintWriter}
   val ann = Sequential[Double, SimpleGD](
     meanSquareError,
     learningRate = 0.0002f,    
-    batchSize = 100
+    batchSize = 16
   ).add(Dense())    
 
   val (xBatch, yBatch) = batch(10000)
@@ -39,7 +39,7 @@ import java.io.{File,PrintWriter}
   val y = Tensor1D(yBatch.toArray)
   val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
 
-  val model = ann.train(xTrain.T, yTrain.T, epochs = 300)
+  val model = ann.train(xTrain.T, yTrain.T, epochs = 100)
 
   println(s"current weight: ${model.currentWeights}")
   println(s"true weight: $weight")
@@ -54,26 +54,10 @@ import java.io.{File,PrintWriter}
   val lossData = model.losses.zipWithIndex.map((l,i) => List(i.toString, l.toString))
   store("metrics/lr.csv", "epoch,loss", lossData)
 
-  // Loss Surface calculation
-  val weightsF = Future {
-    (0 until 200).foldLeft((-2.0d, ArrayBuffer.empty[Double])) { case ((n, acc), _) =>
-      (n + random.between(0.01d, 0.03d), acc :+ n)
-    }._2.toList
-  }
-  val biasesF = Future { 
-    (0 until 200).foldLeft((-2.6d, ArrayBuffer.empty[Double])) { case ((n, acc), _) =>
-      (n + random.between(0.01d, 0.03d), acc :+ n)
-    }._2.toList
-  }
-
-  val result = Await.result(
-    (for {
-      weight <- weightsF
-      biases <- biasesF
-    } yield (weight, biases)), 
-    60.seconds)
-  val (weights, biases) = result
+  val weights = for (i <- -100 until 100) yield i + 1.5 * random.nextDouble
+  val biases = weights
   
+  println("Calculating loss surface")
   val losses = weights.map { w =>
     val wT = w.as0D
     biases.foldLeft(ArrayBuffer.empty[Double]) { (acc, b) =>
@@ -81,8 +65,9 @@ import java.io.{File,PrintWriter}
       acc :+ loss
     }
   }
-  
+  println("Done calculating loss surface.")
+
   val metricsData = weights.zip(biases).zip(losses)
     .map{ case ((w, b), l) => List(w.toString, b.toString, l.mkString("\"", ",", "\"")) }
   
-  store("metrics/lr-surface.csv", "w,b,l", metricsData)
+  store("metrics/lr-surface.csv", "w,b,l", metricsData.toList)
