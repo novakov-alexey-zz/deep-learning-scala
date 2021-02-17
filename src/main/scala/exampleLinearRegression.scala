@@ -16,9 +16,9 @@ import java.io.{File,PrintWriter}
 @main def linearRegression() =       
   val random = new Random(100)
   val weight = random.nextFloat()
-  val bias = random.nextFloat()
-    
-  def batch(batchSize: Int): (ArrayBuffer[Double], ArrayBuffer[Double]) = {
+  val bias = random.nextFloat()  
+
+  def batch(batchSize: Int): (ArrayBuffer[Double], ArrayBuffer[Double]) =
     val inputs = ArrayBuffer.empty[Double]
     val outputs = ArrayBuffer.empty[Double]
     (0 until batchSize).foldLeft(inputs, outputs) { case ((i, o), _) =>
@@ -27,12 +27,11 @@ import java.io.{File,PrintWriter}
         o += bias + weight * input 
         (i, o)
     }
-  }
 
   val ann = Sequential[Double, SimpleGD](
     meanSquareError,
-    learningRate = 0.0015f,    
-    batchSize = 64
+    learningRate = 0.0002f,    
+    batchSize = 100
   ).add(Dense())    
 
   val (xBatch, yBatch) = batch(10000)
@@ -40,7 +39,7 @@ import java.io.{File,PrintWriter}
   val y = Tensor1D(yBatch.toArray)
   val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
 
-  val model = ann.train(xTrain.T, yTrain.T, epochs = 100)
+  val model = ann.train(xTrain.T, yTrain.T, epochs = 300)
 
   println(s"current weight: ${model.currentWeights}")
   println(s"true weight: $weight")
@@ -57,13 +56,13 @@ import java.io.{File,PrintWriter}
 
   // Loss Surface calculation
   val weightsF = Future {
-    (0 until 200).foldLeft((0.001d, ArrayBuffer.empty[Double])) { case ((n, acc), _) =>
-      (n + Random.between(0.001d, 0.02d), acc :+ n)
+    (0 until 200).foldLeft((-2.0d, ArrayBuffer.empty[Double])) { case ((n, acc), _) =>
+      (n + random.between(0.01d, 0.03d), acc :+ n)
     }._2.toList
   }
   val biasesF = Future { 
-    (0 until 200).foldLeft((0.1d, ArrayBuffer.empty[Double])) { case ((n, acc), _) =>
-      (n + Random.between(0.1d, 0.3d), acc :+ n)
+    (0 until 200).foldLeft((-2.6d, ArrayBuffer.empty[Double])) { case ((n, acc), _) =>
+      (n + random.between(0.01d, 0.03d), acc :+ n)
     }._2.toList
   }
 
@@ -76,8 +75,9 @@ import java.io.{File,PrintWriter}
   val (weights, biases) = result
   
   val losses = weights.map { w =>
-    biases.foldLeft(ArrayBuffer.empty[Double]) { (acc,b) =>
-      val loss = ann.loss(x.T, y.T, List(Weight(w.as0D, b.as0D)))  
+    val wT = w.as0D
+    biases.foldLeft(ArrayBuffer.empty[Double]) { (acc, b) =>
+      val loss = ann.loss(x.T, y.T, List(Weight(wT, b.as0D)))  
       acc :+ loss
     }
   }
