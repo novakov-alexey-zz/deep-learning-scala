@@ -1,5 +1,6 @@
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
+import math.Ordering.Implicits.infixOrderingOps
 
 sealed trait Tensor[T]:
   type A
@@ -22,7 +23,8 @@ extension [T: ClassTag: Numeric, U: ClassTag](t: Tensor[T])
     def batches(
         batchSize: Int
     ): Iterator[Array[Array[T]]] = Tensor.batches(t, batchSize)
-    def equalRows(that: Tensor[T]): Int = Tensor.equalRows(t, that)    
+    def equalRows(that: Tensor[T]): Int = Tensor.equalRows(t, that)
+    def clipInRange(min: T, max: T): Tensor[T] = Tensor.clipInRange(t, min, max)    
 
 case class Tensor0D[T: ClassTag](data: T) extends Tensor[T]:
   type A = T
@@ -427,3 +429,18 @@ object Tensor:
         data.zip(data2).foldLeft(0) { case (acc, (a, b)) => if a.sameElements(b) then acc + 1 else acc }
       case _ => 
         sys.error(s"Tensors must be the same dimension: ${t1.sizes} != ${t2.sizes}")
+  
+  def clipInRange[T: ClassTag](t: Tensor[T], min: T, max: T)(using n: Numeric[T]): Tensor[T] =
+    def clipValue(v: T) =
+      val vAbs = v.abs          
+          if vAbs > max then max
+          else if vAbs < min then min
+          else v
+
+    def clipArray(data: Array[T]) =
+      data.map(clipValue)
+
+    t match 
+      case Tensor2D(data) => Tensor2D(data.map(clipArray))
+      case Tensor1D(data) => Tensor1D(clipArray(data))
+      case Tensor0D(data) => Tensor0D(clipValue(data))

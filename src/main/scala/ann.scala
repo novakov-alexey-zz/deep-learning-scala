@@ -8,6 +8,15 @@ import scala.collection.mutable.ArrayBuffer
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
 
+trait GradientClipping[T] extends (Tensor[T] => Tensor[T]) 
+
+object GradientClipping:
+  def clipByValue[T: Numeric: ClassTag](value: T) = new GradientClipping[T] {
+    def apply(t: Tensor[T]): Tensor[T] = t.clipInRange(-value, value)
+  }
+  
+  def noClipping[T]: GradientClipping[T] = t => t
+
 trait ActivationFunc[T] extends (Tensor[T] => Tensor[T]):
   val name: String
   def apply(x: Tensor[T]): Tensor[T]
@@ -17,10 +26,10 @@ object ActivationFunc:
   def relu[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T] {
 
     override def apply(x: Tensor[T]): Tensor[T] =
-      Tensor.map(x, (t: T) => transformAny[Double, T](math.max(0, n.toDouble(t))))
+      Tensor.map(x, t => transformAny[Double, T](math.max(0, n.toDouble(t))))
 
     override def derivative(x: Tensor[T]): Tensor[T] =
-      Tensor.map(x, (t: T) => transformAny[Double, T](if n.toDouble(t) < 0 then 0 else 1))
+      Tensor.map(x, t => transformAny[Double, T](if n.toDouble(t) < 0 then 0 else 1))
 
     override val name = "relu"
   }
@@ -28,12 +37,12 @@ object ActivationFunc:
   def sigmoid[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T] {
 
     override def apply(x: Tensor[T]): Tensor[T] =
-      Tensor.map(x, (t: T) => transformAny[Double,T](1 / (1 + math.exp(-n.toDouble(t)))))
+      Tensor.map(x, t => transformAny[Double,T](1 / (1 + math.exp(-n.toDouble(t)))))
 
     override def derivative(x: Tensor[T]): Tensor[T] =
       Tensor.map(
         x,
-        (t: T) =>
+        t =>
           transformAny[Double, T](math.exp(-n.toDouble(t)) / math.pow(1 + math.exp(-n.toDouble(t)), 2))
       )
     
@@ -46,7 +55,6 @@ object ActivationFunc:
     override val name = "no-activation"    
   }
 
-
 trait Loss[T]:
   def apply(
       actual: Tensor[T],
@@ -58,19 +66,19 @@ object Loss:
     t1: Tensor[T], t2: Tensor[T], f: (T, T) => T
   ) = 
     (t1, t2) match
-      case (Tensor1D(a), Tensor1D(b)) => 
-        val size = t1.length
+      case (Tensor1D(a), Tensor1D(b)) =>         
         val sum = (t1, t2).map2(f).sum
-        (sum, size)
+        (sum, t1.length)
       case (Tensor2D(a), Tensor2D(b)) =>
         val size = t1.length * t1.cols        
         val sum = (t1, t2).map2(f).sum
         (sum, size)
       case (Tensor0D(a), Tensor0D(b)) =>        
         (f(a, b), 1)
-      case _ => sys.error(s"Both tensors must be the same shape: ${t1.sizes} != ${t2.sizes}")
+      case _ => 
+        sys.error(s"Both tensors must be the same shape: ${t1.sizes} != ${t2.sizes}")
 
-  def meanSquareError[T: ClassTag: Numeric]: Loss[T] = new Loss[T] {
+  def meanSquareError[T: ClassTag: Numeric] = new Loss[T] {
     def calc(a: T, b: T): T =      
       transformAny[Double, T](math.pow(transformAny[T, Double](a - b), 2)) 
 
@@ -83,7 +91,7 @@ object Loss:
       transformAny(meanSumScore)
   }
 
-  def binaryCrossEntropy[T: ClassTag](using n: Numeric[T]): Loss[T] = new Loss[T] {
+  def binaryCrossEntropy[T: ClassTag](using n: Numeric[T]) = new Loss[T] {
     def calc(a: T, b: T): T = 
       transformAny[Double, T](n.toDouble(a) * math.log(1e-15 + n.toDouble(b))) 
 
@@ -102,7 +110,8 @@ sealed trait Optimizer[U]:
       weights: List[Weight[T]],
       activations: List[Activation[T]],
       error: Tensor[T],
-      learningRate: T
+      learningRate: T,
+      clip: GradientClipping[T]
   ): List[Weight[T]]
 
 type SimpleGD
@@ -113,7 +122,8 @@ object optimizers:
         weights: List[Weight[T]],
         activations: List[Activation[T]],
         error: Tensor[T],
-        learningRate: T
+        learningRate: T,
+        clip: GradientClipping[T]
     ): List[Weight[T]] =      
       weights
         .zip(activations)
@@ -131,7 +141,7 @@ object optimizers:
               case None     => prevDelta
             }) multiply f.derivative(z)
 
-            val partialDerivative = x.T * delta
+            val partialDerivative = clip(x.T * delta)
             val newWeight = w - (learningRate * partialDerivative)
             val newBias = b - (learningRate * delta.sum)
             val updated = Weight(newWeight, newBias, f, u) +: ws
@@ -167,8 +177,8 @@ case class Activation[T](x: Tensor[T], z: Tensor[T], a: Tensor[T])
 sealed trait Model[T]:
   def reset(): Model[T]
   def train(x: Tensor[T], y: Tensor[T], epochs: Int): Model[T]
-  def currentWeights: List[Weight[T]]
-  def predict(x: Tensor[T], weights: List[Weight[T]] = currentWeights): Tensor[T]
+  def weights: List[Weight[T]]
+  def predict(x: Tensor[T], weightList: List[Weight[T]] = weights): Tensor[T]
   def losses: List[T]
   def metricValues: List[(Metric[T], List[Double])]
 
@@ -199,10 +209,9 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U](
     weightStack: Int => List[Weight[T]] = (_: Int) => List.empty[Weight[T]],    
     weights: List[Weight[T]] = Nil,
     losses: List[T] = Nil,
-    metricValues: List[(Metric[T], List[Double])] = Nil
+    metricValues: List[(Metric[T], List[Double])] = Nil,
+    gradientClipping: GradientClipping[T] = GradientClipping.noClipping[T]
 )(using optimizer: Optimizer[U]) extends Model[T]:
-
-  def currentWeights: List[Weight[T]] = weights
 
   def predict(x: Tensor[T], w: List[Weight[T]] = weights): Tensor[T] =
     activate(x, w).last.a
@@ -239,7 +248,8 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U](
             weights,
             activations,
             error,
-            learningRate
+            learningRate,
+            gradientClipping
           )
           val metricValues = metrics
             .map(_.calculate(actual, predicted))
@@ -252,7 +262,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U](
     lazy val inputs = x.cols
     lazy val actualBatches = y.batches(batchSize).toArray
     lazy val xBatches = x.batches(batchSize).zip(actualBatches).toArray
-    lazy val w = getWeights(inputs)
+    lazy val w = getOrInitWeights(inputs)
     
     val emptyMetrics = metrics.map(_ -> List.empty[Double])
     val (updatedWeights, epochLosses, metricValues) =
@@ -271,7 +281,9 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U](
     copy(weights = updatedWeights, losses = epochLosses, metricValues = metricValues)
 
   private def printMetrics(epoch: Int, epochs: Int, avgLoss: T, values: List[(Metric[T], Double)]) = 
-    val metricsStat = values.map((m, avg) => s"${m.name}: $avg").mkString(", metrics: [", ";", "]")
+    val metricsStat = values
+      .map((m, avg) => s"${m.name}: $avg")
+      .mkString(", metrics: [", ";", "]")
     println(
       s"epoch: $epoch/$epochs, avg. loss: $avgLoss${if (metrics.nonEmpty) metricsStat else ""}"
     )
@@ -279,7 +291,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U](
   def reset(): Model[T] =
     copy(weights = Nil)
 
-  private def getWeights(inputs: Int) =
+  private def getOrInitWeights(inputs: Int) =
     if weights == Nil then weightStack(inputs)
     else weights
 

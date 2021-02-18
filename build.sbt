@@ -11,7 +11,10 @@ lazy val root = (project in file("."))
   .settings(
     name := "ann",
     libraryDependencies ++=
-      Seq(scalaTest % Test)
+      Seq(
+        scalaTest % Test,
+        "org.scala-lang.modules" %% "scala-parallel-collections" % "1.0.0"
+      )
   )
 
 scalacOptions ++= {
