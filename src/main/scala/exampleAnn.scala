@@ -74,7 +74,7 @@ import java.io.PrintWriter
 
   val header = s"epoch,loss,${model.metricValues.map(_._1.name).mkString(",")}"
   val acc = model.metricValues.headOption.map(_._2).getOrElse(Nil)
-  val lrData = model.losses.zip(acc).zipWithIndex.map { case ((loss, acc), epoch) =>      
+  val lrData = model.history.losses.zip(acc).zipWithIndex.map { case ((loss, acc), epoch) =>      
     List(epoch.toString, loss.toString, acc.toString)      
   } 
   store("metrics/ann.csv", header, lrData)
@@ -82,7 +82,7 @@ import java.io.PrintWriter
   Using.resource(new PrintWriter(new File("metrics/ann.csv"))) { w =>
     w.write(s"epoch,loss,${model.metricValues.map(_._1.name).mkString(",")}")
     val acc = model.metricValues.headOption.map(_._2).getOrElse(Nil)
-    model.losses.zip(acc).foldLeft(1) { case (epoch, (loss, acc)) =>      
+    model.history.losses.zip(acc).foldLeft(1) { case (epoch, (loss, acc)) =>      
       w.write(s"\n$epoch,$loss,$acc")
       epoch + 1
     }

@@ -30,7 +30,7 @@ import scala.collection.parallel.CollectionConverters._
 
   val ann = Sequential[Double, SimpleGD](
     meanSquareError,
-    learningRate = 0.0002f,    
+    learningRate = 0.00005f,    
     batchSize = 16,
     gradientClipping = clipByValue(5.0d)
   ).add(Dense())    
@@ -40,7 +40,7 @@ import scala.collection.parallel.CollectionConverters._
   val y = Tensor1D(yBatch.toArray)
   val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
 
-  val model = ann.train(xTrain.T, yTrain.T, epochs = 100)
+  val model = ann.train(xTrain.T, yTrain.T, epochs = 200)
 
   println(s"current weight: ${model.weights}")
   println(s"true weight: $weight")
@@ -52,23 +52,35 @@ import scala.collection.parallel.CollectionConverters._
   println(s"test meanSquareError = $value")
 
   //////////////////////////////////////////
-  // Store all posible data for plotting
+  // Store all posible data for plotting ///
   //////////////////////////////////////////
 
+  // datapoints
   val dataPoints = xBatch.zip(yBatch).map((x, y) => List(x.toString, y.toString))
   store("metrics/datapoints.csv", "x,y", dataPoints.toList)
+
   //Store loss metric into CSV file
-  val lossData = model.losses.zipWithIndex.map((l,i) => List(i.toString, l.toString))
+  val lossData = model.history.losses.zipWithIndex.map((l,i) => List(i.toString, l.toString))
   store("metrics/lr.csv", "epoch,loss", lossData)
 
-  val weights = for (i <- -100 until 100) yield i + 1.5 * random.nextDouble
+  //gradient
+  val gradientData = model.history.weights.zip(model.history.losses)
+      .map { (weights, l) => 
+        weights.headOption.map(w => 
+          List(w.w.as1D.data.head.toString, w.b.as1D.data.head.toString)
+        ).toList.flatten :+ l.toString
+      }
+  store("metrics/gradient.csv", "w,b,loss", gradientData)
+
+  // loss surface
+  val weights = for (i <- 0 until 100) yield i/100d 
   val biases = weights
   
   println("Calculating loss surface")
   val losses = weights.par.map { w =>
-    val wT = w.as0D
+    val wT = w.as2D
     biases.foldLeft(ArrayBuffer.empty[Double]) { (acc, b) =>
-      val loss = ann.loss(x.T, y.T, List(Weight(wT, b.as0D)))  
+      val loss = ann.loss(x.T, y.T, List(Weight(wT, b.as1D)))  
       acc :+ loss
     }
   }

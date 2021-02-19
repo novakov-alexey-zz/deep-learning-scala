@@ -114,6 +114,8 @@ object ops:
 
   extension [T: ClassTag](t: T)
     def as0D: Tensor0D[T] = Tensor0D(t)
+    def as1D: Tensor1D[T] = Tensor1D(Array(t))
+    def as2D: Tensor2D[T] = Tensor2D(Array(Array(t)))
 
   implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T):
     // dot product

@@ -180,7 +180,7 @@ sealed trait Model[T]:
   def train(x: Tensor[T], y: Tensor[T], epochs: Int): Model[T]
   def weights: List[Weight[T]]
   def predict(x: Tensor[T], weightList: List[Weight[T]] = weights): Tensor[T]
-  def losses: List[T]
+  def history: TrainHistory[T]
   def metricValues: List[(Metric[T], List[Double])]
 
 object Model:
@@ -202,6 +202,8 @@ object Sequential:
       ._2
       .toList
 
+case class TrainHistory[T](weights: List[List[Weight[T]]] = Nil, losses: List[T] = Nil)
+
 case class Sequential[T: ClassTag: RandomGen: Numeric, U](
     lossFunc: Loss[T],
     learningRate: T,
@@ -209,7 +211,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U](
     batchSize: Int = 16,
     weightStack: Int => List[Weight[T]] = (_: Int) => List.empty[Weight[T]],    
     weights: List[Weight[T]] = Nil,
-    losses: List[T] = Nil,
+    history: TrainHistory[T] = TrainHistory[T](),    
     metricValues: List[(Metric[T], List[Double])] = Nil,
     gradientClipping: GradientClipping[T] = GradientClipping.noClipping[T]
 )(using optimizer: Optimizer[U]) extends Model[T]:
@@ -266,9 +268,9 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U](
     lazy val w = getOrInitWeights(inputs)
     
     val emptyMetrics = metrics.map(_ -> List.empty[Double])
-    val (updatedWeights, epochLosses, metricValues) =
-      (1 to epochs).foldLeft(w, List.empty[T], emptyMetrics) {
-        case ((weights, losses, metricsList), epoch) =>
+    val (updatedWeights, wHistory, epochLosses, metricValues) =
+      (1 to epochs).foldLeft(w, List.empty[List[Weight[T]]], List.empty[T], emptyMetrics) {
+        case ((weights, wHistory, losses, metricsList), epoch) =>
           val (w, avgLoss, epochMetric) = trainEpoch(xBatches, weights)
           
           val epochMetricAvg = metrics.zip(epochMetric).map((m, value) => m -> m.average(x.length, value))
@@ -277,9 +279,14 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U](
             case ((epochMetric, v), (trainingMetric, values)) => trainingMetric -> (values :+ v)
           }
 
-          (w, losses :+ avgLoss, epochMetrics)
+          (w, wHistory :+ w, losses :+ avgLoss, epochMetrics)
       }
-    copy(weights = updatedWeights, losses = epochLosses, metricValues = metricValues)
+
+    copy(
+      weights = updatedWeights, 
+      history = history.copy(losses = epochLosses, weights = wHistory), 
+      metricValues = metricValues
+    )
 
   private def printMetrics(epoch: Int, epochs: Int, avgLoss: T, values: List[(Metric[T], Double)]) = 
     val metricsStat = values
