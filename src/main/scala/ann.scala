@@ -141,9 +141,10 @@ object optimizers:
               case None     => prevDelta
             }) multiply f.derivative(z)
 
-            val partialDerivative = clip(x.T * delta)
-            val newWeight = w - (learningRate * partialDerivative)
-            val newBias = b - (learningRate * delta.sum)
+            val wGradient = clip(x.T * delta)
+            val bGradient = clip(delta).sum
+            val newWeight = w - (learningRate * wGradient)
+            val newBias = b - (learningRate * bGradient)
             val updated = Weight(newWeight, newBias, f, u) +: ws
             (updated, delta, Some(w))
         }
