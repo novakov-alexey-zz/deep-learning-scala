@@ -13,18 +13,19 @@ import java.io.{File,PrintWriter}
 import scala.collection.parallel.CollectionConverters._
 
 @main def linearRegression() =       
-  val random = new Random()
+  val random = new Random(100)
   val weight = random.nextFloat()
-  val bias = random.nextFloat()  
+  val bias = random.nextFloat()
 
   def batch(batchSize: Int): (ArrayBuffer[Double], ArrayBuffer[Double]) =
     val inputs = ArrayBuffer.empty[Double]
     val outputs = ArrayBuffer.empty[Double]
-    (0 until batchSize).foldLeft(inputs, outputs) { case ((i, o), _) =>
-        val input = random.nextDouble()
-        i += input
-        o += bias + weight * input 
-        (i, o)
+    def noise = random.nextDouble / 5
+    (0 until batchSize).foldLeft(inputs, outputs) { case ((x, y), _) =>        
+        val rnd = random.nextDouble
+        x += rnd + noise
+        y += bias + weight * rnd + noise
+        (x, y)
     }
 
   val ann = Sequential[Double, SimpleGD](
@@ -50,6 +51,12 @@ import scala.collection.parallel.CollectionConverters._
   val value = meanSquareError[Double].apply(yTest.T, testPredicted)
   println(s"test meanSquareError = $value")
 
+  //////////////////////////////////////////
+  // Store all posible data for plotting
+  //////////////////////////////////////////
+
+  val dataPoints = xBatch.zip(yBatch).map((x, y) => List(x.toString, y.toString))
+  store("metrics/datapoints.csv", "x,y", dataPoints.toList)
   //Store loss metric into CSV file
   val lossData = model.losses.zipWithIndex.map((l,i) => List(i.toString, l.toString))
   store("metrics/lr.csv", "epoch,loss", lossData)
