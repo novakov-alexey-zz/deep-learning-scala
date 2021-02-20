@@ -1,9 +1,7 @@
-import ActivationFunc._
-import Loss._
-import ops._
-import optimizers.given
-import RandomGen.uniform
-import GradientClipping._
+import ml.network.api._
+import ml.network.api.given
+import ml.tensors._
+import ml.tensors.ops._
 
 import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
@@ -38,7 +36,7 @@ import scala.collection.parallel.CollectionConverters._
   val (xBatch, yBatch) = batch(10000)
   val x = Tensor1D(xBatch.toArray)
   val y = Tensor1D(yBatch.toArray)
-  val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
+  val ((xTrain, xTest), (yTrain, yTest)) = Tensor.split(0.2f, (x, y))
 
   val model = ann.train(xTrain.T, yTrain.T, epochs = 200)
 

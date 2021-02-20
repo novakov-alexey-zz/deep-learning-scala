@@ -1,16 +1,14 @@
-import ActivationFunc._
-import Loss._
-import Metric.{accuracyBinaryClassification, predictedToBinary}
-import converter.transform
-import ops._
-import optimizers.given
-import RandomGen._
+import ml.preprocessing._
+import ml.transformation.transform
+import ml.tensors._
+import ml.tensors.ops._
+import ml.network.api.given
+import ml.network.api._
 
 import java.nio.file.Path
 import scala.reflect.ClassTag
 import scala.util.Using
-import java.io.File
-import java.io.PrintWriter
+import java.io.{File, PrintWriter}
 
 @main def ann() = 
 
@@ -53,7 +51,7 @@ import java.io.PrintWriter
   val x = prepareData(data)
   val y = dataLoader.cols[Double](-1)
   
-  val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
+  val ((xTrain, xTest), (yTrain, yTest)) = Tensor.split(0.2f, (x, y))
   
   val start = System.currentTimeMillis()
   val model = ann.train(xTrain, yTrain, epochs = 100)

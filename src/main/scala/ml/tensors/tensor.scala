@@ -1,3 +1,5 @@
+package ml.tensors
+
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
 import math.Ordering.Implicits.infixOrderingOps
@@ -142,7 +144,7 @@ object ops:
     def split(
         fraction: Float
     ): ((Tensor[T], Tensor[T]), (Tensor[T], Tensor[T])) =
-      Tensor.splitPair(fraction, pair)
+      Tensor.split(fraction, pair)
 
   extension [T: ClassTag](t: Tensor2D[T])
     def col(i: Int): Tensor1D[T] = Tensor1D(Tensor2D.col(t.data, i))
@@ -383,7 +385,7 @@ object Tensor:
     val countOrZero = if count < 1 then 0 else count
     data.splitAt(data.length - countOrZero.toInt)
 
-  def splitPair[T: ClassTag](
+  def split[T: ClassTag](
       fraction: Float,
       t: (Tensor[T], Tensor[T])
   ): ((Tensor[T], Tensor[T]), (Tensor[T], Tensor[T])) =

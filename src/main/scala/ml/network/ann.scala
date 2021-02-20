@@ -1,8 +1,14 @@
+package ml.network 
+
+import ml.network.RandomGen._
+import ml.transformation.transformAny
+import ml.tensors._
+import ml.tensors.ops._
+
 import Model._
-import RandomGen._
 import Sequential._
-import converter.transformAny
-import ops._
+import ActivationFuncApi._
+import GradientClippingApi._
 
 import scala.collection.mutable.ArrayBuffer
 import scala.math.Numeric.Implicits._
@@ -10,19 +16,21 @@ import scala.reflect.ClassTag
 
 trait GradientClipping[T] extends (Tensor[T] => Tensor[T]) 
 
-object GradientClipping:
+trait GradientClippingApi:
   def clipByValue[T: Numeric: ClassTag](value: T) = new GradientClipping[T] {
     def apply(t: Tensor[T]): Tensor[T] = t.clipInRange(-value, value)
   }
   
   def noClipping[T]: GradientClipping[T] = t => t
 
+object GradientClippingApi extends GradientClippingApi  
+
 trait ActivationFunc[T] extends (Tensor[T] => Tensor[T]):
   val name: String
   def apply(x: Tensor[T]): Tensor[T]
   def derivative(x: Tensor[T]): Tensor[T]
 
-object ActivationFunc:
+trait ActivationFuncApi:
   def relu[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T] {
 
     override def apply(x: Tensor[T]): Tensor[T] =
@@ -55,13 +63,15 @@ object ActivationFunc:
     override val name = "no-activation"    
   }
 
+object ActivationFuncApi extends ActivationFuncApi
+
 trait Loss[T]:
   def apply(
       actual: Tensor[T],
       predicted: Tensor[T]
   ): T
 
-object Loss:
+trait LossApi:
   private def calcMetric[T: Numeric: ClassTag](
     t1: Tensor[T], t2: Tensor[T], f: (T, T) => T
   ) = 
@@ -103,7 +113,10 @@ object Loss:
       val meanSumScore = 1.0 / count * transformAny[T, Double](sumScore)
       transformAny(-meanSumScore)      
   }
+
+object LossApi extends LossApi  
   
+
 sealed trait Optimizer[U]:
 
   def updateWeights[T: Numeric: ClassTag](
@@ -155,14 +168,14 @@ sealed trait Layer[T]:
   def f: ActivationFunc[T]
 
 case class Dense[T](
-    f: ActivationFunc[T] = ActivationFunc.noActivation[T],
+    f: ActivationFunc[T] = ActivationFuncApi.noActivation[T],
     units: Int = 1
 ) extends Layer[T]
 
 case class Weight[T](
     w: Tensor[T],
     b: Tensor[T],
-    f: ActivationFunc[T] = ActivationFunc.noActivation[T],
+    f: ActivationFunc[T] = ActivationFuncApi.noActivation[T],
     units: Int = 1
 ) {
   override def toString() = 
@@ -213,7 +226,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U](
     weights: List[Weight[T]] = Nil,
     history: TrainHistory[T] = TrainHistory[T](),    
     metricValues: List[(Metric[T], List[Double])] = Nil,
-    gradientClipping: GradientClipping[T] = GradientClipping.noClipping[T]
+    gradientClipping: GradientClipping[T] = GradientClippingApi.noClipping[T]
 )(using optimizer: Optimizer[U]) extends Model[T]:
 
   def predict(x: Tensor[T], w: List[Weight[T]] = weights): Tensor[T] =
@@ -318,7 +331,7 @@ trait Metric[T]:
     val correct = calculate(actual, predicted)
     average(actual.length, correct)
 
-object Metric:
+trait MetricApi:
   def predictedToBinary[T](v: T)(using n: Numeric[T]): T =
     if n.toDouble(v) > 0.5 then n.one else n.zero
 
@@ -332,3 +345,5 @@ object Metric:
         val predictedNormalized = predicted.map(predictedToBinary)
         actual.equalRows(predictedNormalized)      
   }
+
+object MetricApi extends MetricApi

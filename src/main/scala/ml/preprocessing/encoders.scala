@@ -1,6 +1,9 @@
+package ml.preprocessing
+
 import Encoder._
-import converter.transformAny
-import ops._
+import ml.transformation.transformAny
+import ml.tensors._
+import ml.tensors.ops._
 
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag

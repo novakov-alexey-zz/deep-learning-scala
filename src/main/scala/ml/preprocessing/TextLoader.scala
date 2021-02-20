@@ -1,11 +1,14 @@
-import converter.{transform, transformArr}
+package ml.preprocessing
+
+import ml.transformation.{transform, transformArr}
 
 import java.io.File
 import java.nio.file.Path
 import scala.io.Source
 import scala.reflect.ClassTag
 import scala.util.Using
-import ops._
+import ml.tensors._
+import ml.tensors.ops._
 
 object TextLoader:
   val defaultDelimiter: String = ","

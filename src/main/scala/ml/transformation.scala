@@ -1,5 +1,7 @@
-import ImplicitConfigHelper._
+package ml
 
+import ImplicitConfigHelper._
+import ml.tensors._
 import scala.reflect.ClassTag
 
 object ImplicitConfigHelper:
@@ -9,7 +11,7 @@ object ImplicitConfigHelper:
   val Float_ = classOf[Float]
   val Double_ = classOf[Double]
 
-object converter:
+object transformation:
 
   def transform[T: ClassTag](
       data: Array[Array[String]]
