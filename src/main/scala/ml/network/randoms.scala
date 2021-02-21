@@ -2,8 +2,7 @@ package ml.network
 
 import scala.reflect.ClassTag
 import ml.transformation.transformAny
-import ml.tensors._
-import ml.tensors.ops._
+import ml.tensors.api._
 
 trait RandomGen[T]:
   def gen: T

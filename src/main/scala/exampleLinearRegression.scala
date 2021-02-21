@@ -1,7 +1,6 @@
 import ml.network.api._
 import ml.network.api.given
-import ml.tensors._
-import ml.tensors.ops._
+import ml.tensors.api._
 
 import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
@@ -36,7 +35,7 @@ import scala.collection.parallel.CollectionConverters._
   val (xBatch, yBatch) = batch(10000)
   val x = Tensor1D(xBatch.toArray)
   val y = Tensor1D(yBatch.toArray)
-  val ((xTrain, xTest), (yTrain, yTest)) = Tensor.split(0.2f, (x, y))
+  val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
 
   val model = ann.train(xTrain.T, yTrain.T, epochs = 200)
 
@@ -85,6 +84,6 @@ import scala.collection.parallel.CollectionConverters._
   println("Done calculating loss surface.")
 
   val metricsData = weights.zip(biases).zip(losses)
-    .map{ case ((w, b), l) => List(w.toString, b.toString, l.mkString("\"", ",", "\"")) }
+    .map { case ((w, b), l) => List(w.toString, b.toString, l.mkString("\"", ",", "\"")) }
   
   store("metrics/lr-surface.csv", "w,b,l", metricsData.toList)

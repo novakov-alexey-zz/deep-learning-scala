@@ -10,28 +10,14 @@ sealed trait Tensor[T]:
   def length: Int
   def sizes: List[Int]
   def cols: Int
-  
-extension [T: ClassTag: Numeric, U: ClassTag](t: Tensor[T])
-    // dot product    
-    def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
-    def map(f: T => U): Tensor[U] = Tensor.map[T, U](t, f)
-    def -(that: T): Tensor[T] = Tensor.subtract(t, Tensor0D(that))
-    def -(that: Tensor[T]): Tensor[T] = Tensor.subtract(t, that)
-    def +(that: Tensor[T]): Tensor[T] = Tensor.plus(t, that)    
-    def sum: T = Tensor.sum(t)        
-    def split(fraction: Float): (Tensor[T], Tensor[T]) = Tensor.split(fraction, t)
-    // Hadamard product
-    def multiply(that: Tensor[T]): Tensor[T] = Tensor.multiply(t, that)
-    def batches(
-        batchSize: Int
-    ): Iterator[Array[Array[T]]] = Tensor.batches(t, batchSize)
-    def equalRows(that: Tensor[T]): Int = Tensor.equalRows(t, that)
-    def clipInRange(min: T, max: T): Tensor[T] = Tensor.clipInRange(t, min, max)    
 
 case class Tensor0D[T: ClassTag](data: T) extends Tensor[T]:
   type A = T
+  
   override val length: Int = 1
+  
   override val sizes: List[Int] = length :: Nil
+  
   private val meta = s"sizes: $length, Tensor0D[${summon[ClassTag[T]]}]"
 
   override def toString: String =
@@ -47,7 +33,9 @@ case class Tensor1D[T: ClassTag](data: Array[T]) extends Tensor[T]:
   override def toString: String =
     val meta = s"sizes: ${sizes.head}, Tensor1D[${summon[ClassTag[T]]}]"
     s"$meta:\n[" + data.mkString(",") + "]\n"
+
   override def length: Int = data.length
+
   override def cols: Int = length
 
 object Tensor1D:
@@ -108,11 +96,36 @@ object Tensor2D:
     val to = if r < 0 then data.length + r else if r == 0 then data.length else r
     data.slice(from, to)
 
-object ops:
+private trait genOps:    
+  extension [T: ClassTag: Numeric](t: Tensor[T])
+    // dot product    
+    def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)    
+    def -(that: T): Tensor[T] = Tensor.subtract(t, Tensor0D(that))
+    def -(that: Tensor[T]): Tensor[T] = Tensor.subtract(t, that)
+    def +(that: Tensor[T]): Tensor[T] = Tensor.plus(t, that)    
+    def sum: T = Tensor.sum(t)        
+    def split(fraction: Float): (Tensor[T], Tensor[T]) = Tensor.split(fraction, t)
+    // Hadamard product
+    def multiply(that: Tensor[T]): Tensor[T] = Tensor.multiply(t, that)
+    def batches(
+        batchSize: Int
+    ): Iterator[Array[Array[T]]] = Tensor.batches(t, batchSize)
+    def equalRows(that: Tensor[T]): Int = Tensor.equalRows(t, that)
+    def clipInRange(min: T, max: T): Tensor[T] = Tensor.clipInRange(t, min, max)
+
+trait ops extends genOps:
+  extension [T: ClassTag](t: Tensor2D[T])
+    def col(i: Int): Tensor1D[T] = Tensor1D(Tensor2D.col(t.data, i))
+
+    def T: Tensor2D[T] = Tensor.transpose(t).asInstanceOf[Tensor2D[T]]
+
+  extension [T: ClassTag: Numeric, U: ClassTag](t: Tensor[T])  
+    def map(f: T => U): Tensor[U] = Tensor.map[T, U](t, f)
+  
   extension [T: ClassTag](t: Tensor[T])
-    def T: Tensor[T] = Tensor.transpose(t) 
+    def T: Tensor[T] = Tensor.transpose(t)
     def as1D: Tensor1D[T] = Tensor.as1D(t)
-    def as2D: Tensor2D[T] = Tensor.as2D(t)
+    def as2D: Tensor2D[T] = Tensor.as2D(t)    
 
   extension [T: ClassTag](t: T)
     def as0D: Tensor0D[T] = Tensor0D(t)
@@ -145,11 +158,6 @@ object ops:
         fraction: Float
     ): ((Tensor[T], Tensor[T]), (Tensor[T], Tensor[T])) =
       Tensor.split(fraction, pair)
-
-  extension [T: ClassTag](t: Tensor2D[T])
-    def col(i: Int): Tensor1D[T] = Tensor1D(Tensor2D.col(t.data, i))
-
-    def T: Tensor2D[T] = Tensor.transpose(t).asInstanceOf[Tensor2D[T]]
 
   extension [T: ClassTag](t: Tensor1D[T])
     def batchColumn(batchSize: Int): Iterator[Array[T]] =

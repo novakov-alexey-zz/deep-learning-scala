@@ -3,7 +3,7 @@ package ml.network
 import ml.network.RandomGen._
 import ml.transformation.transformAny
 import ml.tensors._
-import ml.tensors.ops._
+import ml.tensors.api._
 
 import Model._
 import Sequential._
@@ -335,7 +335,7 @@ trait MetricApi:
   def predictedToBinary[T](v: T)(using n: Numeric[T]): T =
     if n.toDouble(v) > 0.5 then n.one else n.zero
 
-  def accuracyBinaryClassification[T: ClassTag: Numeric]: Metric[T] = new Metric[T] {
+  def accuracyBinaryClassification[T: ClassTag: Numeric] = new Metric[T]:
     val name = "accuracy"
 
     def calculate(
@@ -344,6 +344,5 @@ trait MetricApi:
     ): Int =      
         val predictedNormalized = predicted.map(predictedToBinary)
         actual.equalRows(predictedNormalized)      
-  }
 
 object MetricApi extends MetricApi

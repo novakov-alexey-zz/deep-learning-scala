@@ -1,16 +1,16 @@
 import ml.preprocessing._
 import ml.transformation.transform
 import ml.tensors._
-import ml.tensors.ops._
-import ml.network.api.given
+import ml.tensors.api._
 import ml.network.api._
+import ml.network.api.given
 
 import java.nio.file.Path
 import scala.reflect.ClassTag
 import scala.util.Using
 import java.io.{File, PrintWriter}
 
-@main def ann() = 
+@main def ann() =
 
   def createEncoders[T: Numeric: ClassTag](
     data: Tensor2D[String]
@@ -51,7 +51,7 @@ import java.io.{File, PrintWriter}
   val x = prepareData(data)
   val y = dataLoader.cols[Double](-1)
   
-  val ((xTrain, xTest), (yTrain, yTest)) = Tensor.split(0.2f, (x, y))
+  val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
   
   val start = System.currentTimeMillis()
   val model = ann.train(xTrain, yTrain, epochs = 100)
