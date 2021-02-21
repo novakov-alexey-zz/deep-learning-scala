@@ -1,7 +1,7 @@
 package ml
 
+import ml.tensors._
 import ml.tensors.api._
-
 import ImplicitConfigHelper._
 import scala.reflect.ClassTag
 

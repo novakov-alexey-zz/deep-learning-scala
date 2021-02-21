@@ -6,9 +6,9 @@ import ml.network.api._
 import ml.network.api.given
 
 import java.nio.file.Path
+import java.io.{File, PrintWriter}
 import scala.reflect.ClassTag
 import scala.util.Using
-import java.io.{File, PrintWriter}
 
 @main def ann() =
 
