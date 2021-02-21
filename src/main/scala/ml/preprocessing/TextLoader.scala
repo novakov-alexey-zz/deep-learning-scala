@@ -1,8 +1,8 @@
 package ml.preprocessing
 
 import ml.transformation.{transform, transformArr}
-import ml.tensors._
 import ml.tensors.api._
+import ml.tensors.ops.T
 
 import java.io.File
 import java.nio.file.Path

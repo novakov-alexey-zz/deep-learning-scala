@@ -1,7 +1,7 @@
 import ml.preprocessing._
 import ml.transformation.transform
-import ml.tensors._
 import ml.tensors.api._
+import ml.tensors.ops._
 import ml.network.api._
 import ml.network.api.given
 

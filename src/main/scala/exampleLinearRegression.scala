@@ -1,13 +1,15 @@
 import ml.network.api._
 import ml.network.api.given
 import ml.tensors.api._
+import ml.tensors.ops._
 
 import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Random, Using}
-import java.io.{File,PrintWriter}
 import scala.collection.parallel.CollectionConverters._
+
+import java.io.{File,PrintWriter}
 
 @main def linearRegression() =       
   val random = new Random(100)

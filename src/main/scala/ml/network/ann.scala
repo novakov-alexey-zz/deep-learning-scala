@@ -2,8 +2,8 @@ package ml.network
 
 import ml.network.RandomGen._
 import ml.transformation.transformAny
-import ml.tensors._
 import ml.tensors.api._
+import ml.tensors.ops._
 
 import Model._
 import Sequential._
@@ -34,10 +34,10 @@ trait ActivationFuncApi:
   def relu[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T] {
 
     override def apply(x: Tensor[T]): Tensor[T] =
-      Tensor.map(x, t => transformAny[Double, T](math.max(0, n.toDouble(t))))
+      x.map(t => transformAny[Double, T](math.max(0, n.toDouble(t))))      
 
     override def derivative(x: Tensor[T]): Tensor[T] =
-      Tensor.map(x, t => transformAny[Double, T](if n.toDouble(t) < 0 then 0 else 1))
+      x.map(t => transformAny[Double, T](if n.toDouble(t) < 0 then 0 else 1))
 
     override val name = "relu"
   }
@@ -45,14 +45,12 @@ trait ActivationFuncApi:
   def sigmoid[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T] {
 
     override def apply(x: Tensor[T]): Tensor[T] =
-      Tensor.map(x, t => transformAny[Double,T](1 / (1 + math.exp(-n.toDouble(t)))))
+      x.map(t => transformAny[Double,T](1 / (1 + math.exp(-n.toDouble(t)))))
 
     override def derivative(x: Tensor[T]): Tensor[T] =
-      Tensor.map(
-        x,
-        t =>
-          transformAny[Double, T](math.exp(-n.toDouble(t)) / math.pow(1 + math.exp(-n.toDouble(t)), 2))
-      )
+      x.map(t => transformAny[Double, T](
+          math.exp(-n.toDouble(t)) / math.pow(1 + math.exp(-n.toDouble(t)), 2)
+        ))
     
     override val name = "sigmoid"
   }
