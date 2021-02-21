@@ -1,116 +1,40 @@
-import scala.math.Numeric.Implicits._
+package ml.tensors
+
+import ml.tensors.api._
 import scala.reflect.ClassTag
+import math.Numeric.Implicits.infixNumericOps
 import math.Ordering.Implicits.infixOrderingOps
 
-sealed trait Tensor[T]:
-  type A
-  def data: A
-  def length: Int
-  def sizes: List[Int]
-  def cols: Int
-  
-extension [T: ClassTag: Numeric, U: ClassTag](t: Tensor[T])
+private trait genOps:    
+  extension [T: ClassTag: Numeric](t: Tensor[T])
     // dot product    
-    def *(that: Tensor[T]): Tensor[T] = Tensor.mul(t, that)
-    def map(f: T => U): Tensor[U] = Tensor.map[T, U](t, f)
-    def -(that: T): Tensor[T] = Tensor.subtract(t, Tensor0D(that))
-    def -(that: Tensor[T]): Tensor[T] = Tensor.subtract(t, that)
-    def +(that: Tensor[T]): Tensor[T] = Tensor.plus(t, that)    
-    def sum: T = Tensor.sum(t)        
-    def split(fraction: Float): (Tensor[T], Tensor[T]) = Tensor.split(fraction, t)
+    def *(that: Tensor[T]): Tensor[T] = TensorOps.mul(t, that)    
+    def -(that: T): Tensor[T] = TensorOps.subtract(t, Tensor0D(that))
+    def -(that: Tensor[T]): Tensor[T] = TensorOps.subtract(t, that)
+    def +(that: Tensor[T]): Tensor[T] = TensorOps.plus(t, that)    
+    def sum: T = TensorOps.sum(t)        
+    def split(fraction: Float): (Tensor[T], Tensor[T]) = TensorOps.split(fraction, t)
     // Hadamard product
-    def multiply(that: Tensor[T]): Tensor[T] = Tensor.multiply(t, that)
+    def multiply(that: Tensor[T]): Tensor[T] = TensorOps.multiply(t, that)
     def batches(
         batchSize: Int
-    ): Iterator[Array[Array[T]]] = Tensor.batches(t, batchSize)
-    def equalRows(that: Tensor[T]): Int = Tensor.equalRows(t, that)
-    def clipInRange(min: T, max: T): Tensor[T] = Tensor.clipInRange(t, min, max)    
+    ): Iterator[Array[Array[T]]] = TensorOps.batches(t, batchSize)
+    def equalRows(that: Tensor[T]): Int = TensorOps.equalRows(t, that)
+    def clipInRange(min: T, max: T): Tensor[T] = TensorOps.clipInRange(t, min, max)
 
-case class Tensor0D[T: ClassTag](data: T) extends Tensor[T]:
-  type A = T
-  override val length: Int = 1
-  override val sizes: List[Int] = length :: Nil
-  private val meta = s"sizes: $length, Tensor0D[${summon[ClassTag[T]]}]"
+object ops extends genOps:
+  extension [T: ClassTag](t: Tensor2D[T])
+    def col(i: Int): Tensor1D[T] = Tensor1D(Tensor2D.col(t.data, i))
 
-  override def toString: String =
-    s"$meta:\n" + data + "\n"
+    def T: Tensor2D[T] = TensorOps.transpose(t).asInstanceOf[Tensor2D[T]]
 
-  override val cols: Int = length
-
-case class Tensor1D[T: ClassTag](data: Array[T]) extends Tensor[T]:
-  type A = Array[T]
-
-  override def sizes: List[Int] = List(data.length)
-
-  override def toString: String =
-    val meta = s"sizes: ${sizes.head}, Tensor1D[${summon[ClassTag[T]]}]"
-    s"$meta:\n[" + data.mkString(",") + "]\n"
-  override def length: Int = data.length
-  override def cols: Int = length
-
-object Tensor1D:
-  def apply[T: ClassTag](data: T*): Tensor1D[T] = Tensor1D[T](data.toArray)
-
-case class Tensor2D[T: ClassTag](data: Array[Array[T]]) extends Tensor[T]:
-  type A = Array[Array[T]]
-
-  override def sizes: List[Int] =
-    val (r, c) = sizes2D
-    List(r, c)
-
-  def sizes2D: (Int, Int) =
-    (data.length, data.headOption.map(_.length).getOrElse(0))
-
-  private val meta =
-    s"sizes: ${sizes.mkString("x")}, Tensor2D[${summon[ClassTag[T]]}]"
-
-  override def toString: String =
-    s"$meta:\n[" + data
-      .map(_.mkString("[", ",", "]"))
-      .mkString("\n ") + "]\n"
-
-  override def cols: Int = sizes2D._2
-
-  override def length: Int = data.length
-
-object Tensor2D:
-  def apply[T: ClassTag](rows: Array[T]*): Tensor2D[T] =
-    Tensor2D[T](rows.toArray)
-
-  def col[T: ClassTag](data: Array[Array[T]], i: Int): Array[T] =
-    val to = i + 1
-    slice(data, None, Some(i, to)).flatMap(_.headOption)
-
-  def slice[T: ClassTag](
-      data: Array[Array[T]],
-      rows: Option[(Int, Int)] = None,
-      cols: Option[(Int, Int)] = None
-  ): Array[Array[T]] =
-    (rows, cols) match
-      case (Some((rowsFrom, rowsTo)), Some((colsFrom, colsTo))) =>
-        sliceArr(data, (rowsFrom, rowsTo)).map(a =>
-          sliceArr(a, (colsFrom, colsTo))
-        )
-      case (None, Some((colsFrom, colsTo))) =>
-        data.map(a => sliceArr(a, (colsFrom, colsTo)))
-      case (Some((rowsFrom, rowsTo)), None) =>
-        sliceArr(data, (rowsFrom, rowsTo))
-      case _ => data
-
-  def sliceArr[T](
-      data: Array[T],
-      range: (Int, Int)
-  ): Array[T] =
-    val (l, r) = range
-    val from = if l < 0 then data.length + l else l
-    val to = if r < 0 then data.length + r else if r == 0 then data.length else r
-    data.slice(from, to)
-
-object ops:
+  extension [T: ClassTag: Numeric, U: ClassTag](t: Tensor[T])  
+    def map(f: T => U): Tensor[U] = TensorOps.map[T, U](t, f)
+  
   extension [T: ClassTag](t: Tensor[T])
-    def T: Tensor[T] = Tensor.transpose(t) 
-    def as1D: Tensor1D[T] = Tensor.as1D(t)
-    def as2D: Tensor2D[T] = Tensor.as2D(t)
+    def T: Tensor[T] = TensorOps.transpose(t)
+    def as1D: Tensor1D[T] = TensorOps.as1D(t)
+    def as2D: Tensor2D[T] = TensorOps.as2D(t)    
 
   extension [T: ClassTag](t: T)
     def as0D: Tensor0D[T] = Tensor0D(t)
@@ -119,11 +43,11 @@ object ops:
 
   implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T):
     // dot product
-    def *(that: Tensor[T]): Tensor[T] = Tensor.mul(Tensor0D(t), that)
-    def -(that: Tensor[T]): Tensor[T] = Tensor.subtract(Tensor0D(t), that)    
+    def *(that: Tensor[T]): Tensor[T] = TensorOps.mul(Tensor0D(t), that)
+    def -(that: Tensor[T]): Tensor[T] = TensorOps.subtract(Tensor0D(t), that)    
   
   extension [T: ClassTag: Numeric](t: Array[Tensor[T]]) 
-    def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)  
+    def combineAllAs1D: Tensor1D[T] = TensorOps.combineAllAs1D(t)  
   
   extension [T: ClassTag: Numeric](a: Array[T])
     def as1D: Tensor1D[T] = Tensor1D(a)
@@ -132,28 +56,23 @@ object ops:
     def as2D: Tensor2D[T] = Tensor2D(a)
 
   extension [T: ClassTag: Numeric](t: List[Tensor[T]])
-    def combineAllAs1D: Tensor1D[T] = Tensor.combineAllAs1D(t)
+    def combineAllAs1D: Tensor1D[T] = TensorOps.combineAllAs1D(t)
 
   extension [T: ClassTag: Numeric, U: ClassTag: Numeric](pair: (Tensor[T], Tensor[T]))
     def map2(f: (T, T) => U): Tensor[U] = 
-      Tensor.map2(pair._1, pair._2, f)
+      TensorOps.map2(pair._1, pair._2, f)
 
   extension [T: ClassTag: Numeric](pair: (Tensor[T], Tensor[T]))
     def split(
         fraction: Float
     ): ((Tensor[T], Tensor[T]), (Tensor[T], Tensor[T])) =
-      Tensor.splitPair(fraction, pair)
-
-  extension [T: ClassTag](t: Tensor2D[T])
-    def col(i: Int): Tensor1D[T] = Tensor1D(Tensor2D.col(t.data, i))
-
-    def T: Tensor2D[T] = Tensor.transpose(t).asInstanceOf[Tensor2D[T]]
+      TensorOps.split(fraction, pair)
 
   extension [T: ClassTag](t: Tensor1D[T])
     def batchColumn(batchSize: Int): Iterator[Array[T]] =
       t.data.grouped(batchSize)
 
-object Tensor:
+object TensorOps:
   def of[T: ClassTag](size: Int): Tensor1D[T] =
     Tensor1D[T](Array.ofDim[T](size))
 
@@ -307,7 +226,7 @@ object Tensor:
     res
 
   def combineAll[T: ClassTag](ts: List[Tensor1D[T]]): Tensor1D[T] =
-    ts.reduce[Tensor1D[T]] { case (a, b) => Tensor.combine(a, b) }
+    ts.reduce[Tensor1D[T]] { case (a, b) => TensorOps.combine(a, b) }
 
   def combine[T: ClassTag](a: Tensor1D[T], b: Tensor1D[T]): Tensor1D[T] =
     Tensor1D(a.data ++ b.data)
@@ -383,7 +302,7 @@ object Tensor:
     val countOrZero = if count < 1 then 0 else count
     data.splitAt(data.length - countOrZero.toInt)
 
-  def splitPair[T: ClassTag](
+  def split[T: ClassTag](
       fraction: Float,
       t: (Tensor[T], Tensor[T])
   ): ((Tensor[T], Tensor[T]), (Tensor[T], Tensor[T])) =
@@ -445,4 +364,4 @@ object Tensor:
     t match 
       case Tensor2D(data) => Tensor2D(data.map(clipArray))
       case Tensor1D(data) => Tensor1D(clipArray(data))
-      case Tensor0D(data) => Tensor0D(clipValue(data))
+      case Tensor0D(data) => Tensor0D(clipValue(data))          

@@ -1,5 +1,8 @@
-import ImplicitConfigHelper._
+package ml
 
+import ml.tensors.api._
+import ml.tensors.ops._
+import ImplicitConfigHelper._
 import scala.reflect.ClassTag
 
 object ImplicitConfigHelper:
@@ -9,12 +12,12 @@ object ImplicitConfigHelper:
   val Float_ = classOf[Float]
   val Double_ = classOf[Double]
 
-object converter:
+object transformation:
 
   def transform[T: ClassTag](
       data: Array[Array[String]]
   ): Tensor2D[T] =
-    val transformed = data.map(a => transformArr[T](a))
+    val transformed = data.map(transformArr[T])
     Tensor2D[T](transformed)
 
   def transformArr[T: ClassTag](data: Array[String]): Array[T] =

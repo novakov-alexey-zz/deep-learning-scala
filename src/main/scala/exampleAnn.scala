@@ -1,18 +1,16 @@
-import ActivationFunc._
-import Loss._
-import Metric.{accuracyBinaryClassification, predictedToBinary}
-import converter.transform
-import ops._
-import optimizers.given
-import RandomGen._
+import ml.preprocessing._
+import ml.transformation.transform
+import ml.tensors.api._
+import ml.tensors.ops._
+import ml.network.api._
+import ml.network.api.given
 
 import java.nio.file.Path
+import java.io.{File, PrintWriter}
 import scala.reflect.ClassTag
 import scala.util.Using
-import java.io.File
-import java.io.PrintWriter
 
-@main def ann() = 
+@main def ann() =
 
   def createEncoders[T: Numeric: ClassTag](
     data: Tensor2D[String]

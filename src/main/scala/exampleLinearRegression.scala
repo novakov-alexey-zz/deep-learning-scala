@@ -1,16 +1,15 @@
-import ActivationFunc._
-import Loss._
-import ops._
-import optimizers.given
-import RandomGen.uniform
-import GradientClipping._
+import ml.network.api._
+import ml.network.api.given
+import ml.tensors.api._
+import ml.tensors.ops._
 
 import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Random, Using}
-import java.io.{File,PrintWriter}
 import scala.collection.parallel.CollectionConverters._
+
+import java.io.{File,PrintWriter}
 
 @main def linearRegression() =       
   val random = new Random(100)
@@ -87,6 +86,6 @@ import scala.collection.parallel.CollectionConverters._
   println("Done calculating loss surface.")
 
   val metricsData = weights.zip(biases).zip(losses)
-    .map{ case ((w, b), l) => List(w.toString, b.toString, l.mkString("\"", ",", "\"")) }
+    .map { case ((w, b), l) => List(w.toString, b.toString, l.mkString("\"", ",", "\"")) }
   
   store("metrics/lr-surface.csv", "w,b,l", metricsData.toList)

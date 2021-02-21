@@ -1,3 +1,5 @@
+// scala 2.13.4
+
 import $ivy. `org.carbonateresearch::picta:0.1.1`
 import org.carbonateresearch.picta.render.Html.initNotebook // required to initialize jupyter notebook mode
 initNotebook() // stops ugly output
