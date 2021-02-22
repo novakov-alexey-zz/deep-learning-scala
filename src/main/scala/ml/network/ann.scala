@@ -17,7 +17,7 @@ import scala.reflect.ClassTag
 trait GradientClipping[T] extends (Tensor[T] => Tensor[T]) 
 
 trait GradientClippingApi:
-  def clipByValue[T: Numeric: ClassTag](value: T): GradientClipping[T] = 
+  def clipByValue[T: Fractional: ClassTag](value: T): GradientClipping[T] = 
     _.clipInRange(-value, value)
 
   def noClipping[T]: GradientClipping[T] = t => t
@@ -30,7 +30,7 @@ trait ActivationFunc[T] extends (Tensor[T] => Tensor[T]):
   def derivative(x: Tensor[T]): Tensor[T]
 
 trait ActivationFuncApi:
-  def relu[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T]:
+  def relu[T: ClassTag](using n: Fractional[T]) = new ActivationFunc[T]:
 
     override def apply(x: Tensor[T]): Tensor[T] =
       x.map(t => transformAny[Double, T](math.max(0, n.toDouble(t))))      
@@ -40,7 +40,7 @@ trait ActivationFuncApi:
 
     override val name = "relu"
   
-  def sigmoid[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T]:
+  def sigmoid[T: ClassTag](using n: Fractional[T]) = new ActivationFunc[T]:
 
     override def apply(x: Tensor[T]): Tensor[T] =
       x.map(t => transformAny[Double,T](1 / (1 + math.exp(-n.toDouble(t)))))
@@ -66,7 +66,7 @@ trait Loss[T]:
   ): T
 
 trait LossApi:
-  private def calcMetric[T: Numeric: ClassTag](
+  private def calcMetric[T: Fractional: ClassTag](
     t1: Tensor[T], t2: Tensor[T], f: (T, T) => T
   ) = 
     (t1, t2) match
@@ -82,7 +82,7 @@ trait LossApi:
       case _ => 
         sys.error(s"Both tensors must be the same shape: ${t1.sizes} != ${t2.sizes}")
 
-  def meanSquareError[T: ClassTag: Numeric] = new Loss[T]:
+  def meanSquareError[T: ClassTag: Fractional] = new Loss[T]:
     def calc(a: T, b: T): T =      
       transformAny[Double, T](math.pow(transformAny[T, Double](a - b), 2)) 
 
@@ -94,7 +94,7 @@ trait LossApi:
       val meanSumScore = 1.0 / count * transformAny[T, Double](sumScore)
       transformAny(meanSumScore) 
 
-  def binaryCrossEntropy[T: ClassTag](using n: Numeric[T]) = new Loss[T]:
+  def binaryCrossEntropy[T: ClassTag](using n: Fractional[T]) = new Loss[T]:
     def calc(a: T, b: T): T = 
       transformAny[Double, T](n.toDouble(a) * math.log(1e-15 + n.toDouble(b))) 
 
@@ -108,27 +108,77 @@ trait LossApi:
 
 object LossApi extends LossApi  
   
+case class OptimizerContext[T: ClassTag: Fractional](
+  learningRate: T,
+  clip: GradientClipping[T],
+  b1: T,
+  b2: T,
+  eps: T
+)
+
 sealed trait Optimizer[U]:
 
-  def updateWeights[T: Numeric: ClassTag](
+  def updateWeights[T: ClassTag](
       weights: List[Layer[T]],
       activations: List[Activation[T]],
       error: Tensor[T],
-      learningRate: T,
-      clip: GradientClipping[T]
-  ): List[Layer[T]]
+      ctx: OptimizerContext[T]
+  )(using n: Fractional[T]): List[Layer[T]]
 
+
+type Adam
 type SimpleGD
 
 object optimizers:
-  given Optimizer[SimpleGD] with
-    override def updateWeights[T: Numeric: ClassTag](
+  given Optimizer[Adam] with        
+    override def updateWeights[T: ClassTag](
         layers: List[Layer[T]],
         activations: List[Activation[T]],
         error: Tensor[T],
-        learningRate: T,
-        clip: GradientClipping[T]
-    ): List[Layer[T]] =      
+        c: OptimizerContext[T]
+    )(using n: Fractional[T]): List[Layer[T]] =            
+      val iteration = 1 //TOOD use batch id from train methid
+      layers
+        .zip(activations)
+        .foldRight(
+          List.empty[Layer[T]],
+          error,
+          None: Option[Tensor[T]],
+          (n.zero.asT, n.zero.asT)
+        ) {
+          case (
+                (Layer(w, b, f, u), Activation(x, z, _)),
+                (ls, prevDelta, prevWeight, (m, v))
+              ) =>            
+            val delta = (prevWeight match 
+              case Some(pw) => prevDelta * pw.T
+              case None     => prevDelta
+            ) multiply f.derivative(z)        
+            val wGradient = c.clip(x.T * delta)
+            val bGradient = c.clip(delta).sum
+            
+            // Adam            
+            val mt = (c.b1 * m) + (n.one - c.b1) * wGradient
+            val vt = (c.b2 * v) + (n.one - c.b2) * wGradient.sqr
+
+            val mHat = mt :/ (n.one - (c.b1 ** iteration))
+            val vHat = vt :/ (n.one - (c.b2 ** iteration))            
+
+            val newWeight = w - ((c.learningRate *: mHat) / (vHat.sqrt + c.eps))
+
+            val newBias = b - (c.learningRate * bGradient)
+            val updated = Layer(newWeight, newBias, f, u) +: ls
+            (updated, delta, Some(w), (mt, vt))
+        }
+        ._1    
+
+  given Optimizer[SimpleGD] with
+    override def updateWeights[T: ClassTag](
+        layers: List[Layer[T]],
+        activations: List[Activation[T]],
+        error: Tensor[T],
+        ctx: OptimizerContext[T]
+    )(using n: Fractional[T]): List[Layer[T]] =      
       layers
         .zip(activations)
         .foldRight(
@@ -138,18 +188,18 @@ object optimizers:
         ) {
           case (
                 (Layer(w, b, f, u), Activation(x, z, _)),
-                (ws, prevDelta, prevWeight)
+                (ls, prevDelta, prevWeight)
               ) =>            
             val delta = (prevWeight match {
               case Some(pw) => prevDelta * pw.T
               case None     => prevDelta
             }) multiply f.derivative(z)
 
-            val wGradient = clip(x.T * delta)
-            val bGradient = clip(delta).sum
-            val newWeight = w - (learningRate * wGradient)
-            val newBias = b - (learningRate * bGradient)
-            val updated = Layer(newWeight, newBias, f, u) +: ws
+            val wGradient = ctx.clip(x.T * delta)
+            val bGradient = ctx.clip(delta).sum
+            val newWeight = w - (ctx.learningRate * wGradient)
+            val newBias = b - (ctx.learningRate * bGradient)
+            val updated = Layer(newWeight, newBias, f, u) +: ls
             (updated, delta, Some(w))
         }
         ._1    
@@ -188,11 +238,11 @@ sealed trait Model[T]:
   def metricValues: List[(Metric[T], List[Double])]
 
 object Model:
-  def getAvgLoss[T: ClassTag](losses: List[T])(using num: Numeric[T]): T =
+  def getAvgLoss[T: ClassTag](losses: List[T])(using num: Fractional[T]): T =
     transformAny[Float, T](num.toFloat(losses.sum) / losses.length)
 
 object Sequential:
-  def activate[T: Numeric: ClassTag](
+  def activate[T: Fractional: ClassTag](
       input: Tensor[T],
       layers: List[Layer[T]]
   ): List[Activation[T]] =
@@ -208,7 +258,7 @@ object Sequential:
 
 case class TrainHistory[T](layers: List[List[Layer[T]]] = Nil, losses: List[T] = Nil)
 
-case class Sequential[T: ClassTag: RandomGen: Numeric, U](
+case class Sequential[T: ClassTag: RandomGen: Fractional, U](
     lossFunc: Loss[T],
     learningRate: T,
     metrics: List[Metric[T]] = Nil,
@@ -219,6 +269,11 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U](
     metricValues: List[(Metric[T], List[Double])] = Nil,
     gradientClipping: GradientClipping[T] = GradientClippingApi.noClipping[T]
 )(using optimizer: Optimizer[U]) extends Model[T]:
+  
+  val eps = transformAny[Double, T](10E-8)
+  val b1 = transformAny[Double, T](0.9)
+  val b2 = transformAny[Double, T](0.999)
+  private val ctx = OptimizerContext[T](learningRate, gradientClipping, b1, b2, eps)
 
   def predict(x: Tensor[T], l: List[Layer[T]] = layers): Tensor[T] =
     activate(x, l).last.a
@@ -255,8 +310,7 @@ case class Sequential[T: ClassTag: RandomGen: Numeric, U](
             layers,
             activations,
             error,
-            learningRate,
-            gradientClipping
+            ctx
           )
           val metricValues = metrics
             .map(_.calculate(actual, predicted))
@@ -323,10 +377,10 @@ trait Metric[T]:
     average(actual.length, correct)
 
 trait MetricApi:
-  def predictedToBinary[T](v: T)(using n: Numeric[T]): T =
+  def predictedToBinary[T](v: T)(using n: Fractional[T]): T =
     if n.toDouble(v) > 0.5 then n.one else n.zero
 
-  def accuracyBinaryClassification[T: ClassTag: Numeric] = new Metric[T]:
+  def accuracyBinaryClassification[T: ClassTag: Fractional] = new Metric[T]:
     val name = "accuracy"
 
     def calculate(

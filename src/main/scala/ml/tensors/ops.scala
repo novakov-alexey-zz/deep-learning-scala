@@ -1,17 +1,22 @@
 package ml.tensors
 
 import ml.tensors.api._
+import ml.transformation.transformAny
 import scala.reflect.ClassTag
 import math.Numeric.Implicits.infixNumericOps
 import math.Ordering.Implicits.infixOrderingOps
+import math.Fractional.Implicits.infixFractionalOps
+import math.Integral.Implicits.infixIntegralOps
 
 private trait genOps:    
-  extension [T: ClassTag: Numeric](t: Tensor[T])
+  extension [T: ClassTag: Fractional](t: Tensor[T])
     // dot product    
-    def *(that: Tensor[T]): Tensor[T] = TensorOps.mul(t, that)    
+    def *(that: Tensor[T]): Tensor[T] = TensorOps.mul(t, that)
+    def :*(that: T): Tensor[T] = TensorOps.mul(t, Tensor0D(that))
     def -(that: T): Tensor[T] = TensorOps.subtract(t, Tensor0D(that))
     def -(that: Tensor[T]): Tensor[T] = TensorOps.subtract(t, that)
     def +(that: Tensor[T]): Tensor[T] = TensorOps.plus(t, that)    
+    def +(that: T): Tensor[T] = TensorOps.plus(t, Tensor0D(that))    
     def sum: T = TensorOps.sum(t)        
     def split(fraction: Float): (Tensor[T], Tensor[T]) = TensorOps.split(fraction, t)
     // Hadamard product
@@ -21,6 +26,11 @@ private trait genOps:
     ): Iterator[Array[Array[T]]] = TensorOps.batches(t, batchSize)
     def equalRows(that: Tensor[T]): Int = TensorOps.equalRows(t, that)
     def clipInRange(min: T, max: T): Tensor[T] = TensorOps.clipInRange(t, min, max)
+    def :**(to: Int): Tensor[T] = TensorOps.pow(t, to)
+    def sqr: Tensor[T] = TensorOps.pow(t, 2)
+    def /(that: Tensor[T]): Tensor[T] = TensorOps.div(t, that)
+    def :/(that: T): Tensor[T] = TensorOps.div(t, Tensor0D(that))
+    def sqrt: Tensor[T] = TensorOps.sqrt(t)
 
 object ops extends genOps:
   extension [T: ClassTag](t: Tensor2D[T])
@@ -37,9 +47,14 @@ object ops extends genOps:
     def as2D: Tensor2D[T] = TensorOps.as2D(t)    
 
   extension [T: ClassTag](t: T)
+    def asT: Tensor[T] = Tensor0D(t)
     def as0D: Tensor0D[T] = Tensor0D(t)
     def as1D: Tensor1D[T] = Tensor1D(Array(t))
-    def as2D: Tensor2D[T] = Tensor2D(Array(Array(t)))
+    def as2D: Tensor2D[T] = Tensor2D(Array(Array(t)))       
+    
+  extension [T: ClassTag: Numeric](t: T)
+    def *:(that: Tensor[T]): Tensor[T] = TensorOps.mul(that, Tensor0D(t))
+    def **(to: Int): T = transformAny[Double, T](math.pow(summon[Numeric[T]].toDouble(t), to)) 
 
   implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T):
     // dot product
@@ -365,3 +380,29 @@ object TensorOps:
       case Tensor2D(data) => Tensor2D(data.map(clipArray))
       case Tensor1D(data) => Tensor1D(clipArray(data))
       case Tensor0D(data) => Tensor0D(clipValue(data))          
+  
+  def div[T: ClassTag: Fractional](t1: Tensor[T], t2: Tensor[T]): Tensor[T] =
+    assert(t1.sizes == t2.sizes, "Tensors must have the same shape for elemtnwise division")
+    (t1, t2) match
+      case (Tensor0D(data), Tensor0D(data2)) => Tensor0D(data / data2)
+      case (Tensor1D(data), Tensor1D(data2)) => Tensor1D(data.zip(data2).map(_ /_))
+      case (Tensor2D(data), Tensor2D(data2)) => 
+        val res = data.zip(data2).map((a, b) => a.zip(b).map(_ / _))
+        Tensor2D(res)
+      case _ => sys.error(s"Not implemented for $t1 \n and t2")
+  
+  def sqrt[T: ClassTag: Fractional](t: Tensor[T]): Tensor[T] = 
+    ???///t.map
+
+  def pow[T: ClassTag](t: Tensor[T], to: Int)(using n: Numeric[T]): Tensor[T] =
+    def _pow(v: T) =
+      val res = math.pow(n.toDouble(v), to)
+      transformAny[Double, T](res)
+
+    t match
+      case Tensor0D(data) =>           
+        Tensor0D(_pow(data))
+      case Tensor1D(data) =>
+        Tensor1D(data.map(_pow))
+      case Tensor2D(data) =>
+        Tensor2D(data.map(_.map(_pow)))
