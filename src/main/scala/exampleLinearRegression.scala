@@ -41,7 +41,7 @@ import java.io.{File,PrintWriter}
 
   val model = ann.train(xTrain.T, yTrain.T, epochs = 200)
 
-  println(s"current weight: ${model.weights}")
+  println(s"current weight: ${model.layers}")
   println(s"true weight: $weight")
   println(s"true bias: $bias")
 
@@ -63,7 +63,7 @@ import java.io.{File,PrintWriter}
   store("metrics/lr.csv", "epoch,loss", lossData)
 
   //gradient
-  val gradientData = model.history.weights.zip(model.history.losses)
+  val gradientData = model.history.layers.zip(model.history.losses)
       .map { (weights, l) => 
         weights.headOption.map(w => 
           List(w.w.as1D.data.head.toString, w.b.as1D.data.head.toString)
@@ -79,7 +79,7 @@ import java.io.{File,PrintWriter}
   val losses = weights.par.map { w =>
     val wT = w.as2D
     biases.foldLeft(ArrayBuffer.empty[Double]) { (acc, b) =>
-      val loss = ann.loss(x.T, y.T, List(Weight(wT, b.as1D)))  
+      val loss = ann.loss(x.T, y.T, List(Layer(wT, b.as1D)))  
       acc :+ loss
     }
   }
