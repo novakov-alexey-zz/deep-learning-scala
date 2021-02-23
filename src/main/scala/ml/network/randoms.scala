@@ -1,9 +1,9 @@
 package ml.network
 
-import scala.reflect.ClassTag
-
 import ml.transformation.transformAny
 import ml.tensors.api._
+
+import scala.reflect.ClassTag
 
 trait RandomGen[T]:
   def gen: T

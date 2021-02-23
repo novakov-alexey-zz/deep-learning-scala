@@ -26,11 +26,11 @@ import java.io.{File,PrintWriter}
         y += bias + weight * rnd + noise
         (x, y)
     }
-
-  val ann = Sequential[Double, SimpleGD](
+  
+  val ann = Sequential[Double, Adam](
     meanSquareError,
-    learningRate = 0.00005f,    
-    batchSize = 16,
+    learningRate = 0.0015f,    
+    batchSize = 32,
     gradientClipping = clipByValue(5.0d)
   ).add(Dense())    
 
@@ -39,7 +39,7 @@ import java.io.{File,PrintWriter}
   val y = Tensor1D(yBatch.toArray)
   val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
 
-  val model = ann.train(xTrain.T, yTrain.T, epochs = 200)
+  val model = ann.train(xTrain.T, yTrain.T, epochs = 100)
 
   println(s"current weight: ${model.layers}")
   println(s"true weight: $weight")
@@ -64,15 +64,15 @@ import java.io.{File,PrintWriter}
 
   //gradient
   val gradientData = model.history.layers.zip(model.history.losses)
-      .map { (weights, l) => 
-        weights.headOption.map(w => 
-          List(w.w.as1D.data.head.toString, w.b.as1D.data.head.toString)
-        ).toList.flatten :+ l.toString
+      .map { (layers, loss) => 
+        layers.headOption.map(l => 
+          List(l.w.as1D.data.head.toString, l.b.as1D.data.head.toString)
+        ).toList.flatten :+ loss.toString
       }
   store("metrics/gradient.csv", "w,b,loss", gradientData)
 
   // loss surface
-  val weights = for (i <- 0 until 100) yield i/100d 
+  val weights = for (i <- -60 until 160) yield i/100d 
   val biases = weights
   
   println("Calculating loss surface")

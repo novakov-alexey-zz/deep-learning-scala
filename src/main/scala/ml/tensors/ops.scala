@@ -30,7 +30,7 @@ private trait genOps:
     def sqr: Tensor[T] = TensorOps.pow(t, 2)
     def /(that: Tensor[T]): Tensor[T] = TensorOps.div(t, that)
     def :/(that: T): Tensor[T] = TensorOps.div(t, Tensor0D(that))
-    def sqrt: Tensor[T] = TensorOps.sqrt(t)
+    def sqrt: Tensor[T] = TensorOps.sqrt(t)    
 
 object ops extends genOps:
   extension [T: ClassTag](t: Tensor2D[T])
@@ -45,6 +45,9 @@ object ops extends genOps:
     def T: Tensor[T] = TensorOps.transpose(t)
     def as1D: Tensor1D[T] = TensorOps.as1D(t)
     def as2D: Tensor2D[T] = TensorOps.as2D(t)    
+  
+  extension [T: Numeric: ClassTag](t: Tensor[T])
+    def zero: Tensor[T] = TensorOps.zero(t)   
 
   extension [T: ClassTag](t: T)
     def asT: Tensor[T] = Tensor0D(t)
@@ -141,6 +144,10 @@ object TensorOps:
         Tensor1D(data.zip(data2).map {(a, b) => a + b })
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ + data2)))
+      case (Tensor2D(data), Tensor2D(data2)) =>
+        Tensor2D(data.zip(data2).map((a, b) => a.zip(b).map(_ + _)))
+      case (Tensor0D(data), Tensor2D(data2)) =>
+        Tensor2D(data2.map(_.map(_ + data)))
       case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) =>
         matrixPlusVector(t1, t2)
       case (t1 @ Tensor1D(_), t2 @ Tensor2D(_)) =>
@@ -149,7 +156,8 @@ object TensorOps:
         Tensor1D(data.map(_ + data2))
       case (Tensor0D(data), Tensor1D(data2)) =>
         Tensor1D(data2.map(_ + data))
-      case _ => sys.error(s"Not implemented for:\n$a\nand\n$b!")
+      case (Tensor0D(data), Tensor0D(data2)) =>
+        Tensor0D(data + data2)      
 
   private def matrixPlusVector[T: ClassTag: Numeric](
       t1: Tensor2D[T],
@@ -381,18 +389,19 @@ object TensorOps:
       case Tensor1D(data) => Tensor1D(clipArray(data))
       case Tensor0D(data) => Tensor0D(clipValue(data))          
   
-  def div[T: ClassTag: Fractional](t1: Tensor[T], t2: Tensor[T]): Tensor[T] =
-    assert(t1.sizes == t2.sizes, "Tensors must have the same shape for elemtnwise division")
+  def div[T: ClassTag: Fractional](t1: Tensor[T], t2: Tensor[T]): Tensor[T] =    
     (t1, t2) match
+      case (Tensor2D(data), Tensor0D(data2)) => Tensor2D(data.map(_.map(_ / data2)))
       case (Tensor0D(data), Tensor0D(data2)) => Tensor0D(data / data2)
       case (Tensor1D(data), Tensor1D(data2)) => Tensor1D(data.zip(data2).map(_ /_))
+      case (Tensor1D(data), Tensor0D(data2)) => Tensor1D(data.map(_ / data2))
       case (Tensor2D(data), Tensor2D(data2)) => 
         val res = data.zip(data2).map((a, b) => a.zip(b).map(_ / _))
         Tensor2D(res)
-      case _ => sys.error(s"Not implemented for $t1 \n and t2")
+      case _ => sys.error(s"Not implemented for $t1 \n and $t2")
   
   def sqrt[T: ClassTag: Fractional](t: Tensor[T]): Tensor[T] = 
-    ???///t.map
+    map(t, v => transformAny[Double, T](math.sqrt(transformAny[T, Double](v))))
 
   def pow[T: ClassTag](t: Tensor[T], to: Int)(using n: Numeric[T]): Tensor[T] =
     def _pow(v: T) =
@@ -406,3 +415,6 @@ object TensorOps:
         Tensor1D(data.map(_pow))
       case Tensor2D(data) =>
         Tensor2D(data.map(_.map(_pow)))
+  
+  def zero[T: ClassTag](t: Tensor[T])(using n: Numeric[T]): Tensor[T] =
+    map(t, _ => n.zero)
