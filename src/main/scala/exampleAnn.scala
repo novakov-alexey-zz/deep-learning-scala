@@ -26,11 +26,12 @@ import scala.util.Using
   
   val accuracy = accuracyBinaryClassification[Double]
   
-  val ann = Sequential[Double, SimpleGD](
+  val ann = Sequential[Double, Adam](
     binaryCrossEntropy,
-    learningRate = 0.019d,
+    learningRate = 0.002d,
     metrics = List(accuracy),
-    batchSize = 64
+    batchSize = 64,
+    gradientClipping = clipByValue(5.0d)
   )
     .add(Dense(relu, 6))
     .add(Dense(relu, 6))    
