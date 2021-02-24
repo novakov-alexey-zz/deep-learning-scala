@@ -27,10 +27,12 @@ import java.io.{File,PrintWriter}
         (x, y)
     }
   
+  val alg = "adam"
+
   val ann = Sequential[Double, Adam](
     meanSquareError,
-    learningRate = 0.0015f,    
-    batchSize = 32,
+    learningRate = 0.0012f,    
+    batchSize = 16,
     gradientClipping = clipByValue(5.0d)
   ).add(Dense())    
 
@@ -69,10 +71,11 @@ import java.io.{File,PrintWriter}
           List(l.w.as1D.data.head.toString, l.b.as1D.data.head.toString)
         ).toList.flatten :+ loss.toString
       }
-  store("metrics/gradient.csv", "w,b,loss", gradientData)
+
+  store(s"metrics/$alg-gradient.csv", "w,b,loss", gradientData)
 
   // loss surface
-  val weights = for (i <- -60 until 160) yield i/100d 
+  val weights = for (i <- 0 until 100) yield i/100d 
   val biases = weights
   
   println("Calculating loss surface")
@@ -88,4 +91,4 @@ import java.io.{File,PrintWriter}
   val metricsData = weights.zip(biases).zip(losses)
     .map { case ((w, b), l) => List(w.toString, b.toString, l.mkString("\"", ",", "\"")) }
   
-  store("metrics/lr-surface.csv", "w,b,l", metricsData.toList)
+  store(s"metrics/$alg-lr-surface.csv", "w,b,l", metricsData.toList)
