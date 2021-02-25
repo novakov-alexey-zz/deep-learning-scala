@@ -44,7 +44,7 @@ object optimizers:
         val mHat = mt :/ (n.one - (b1 ** timestep))
         val vHat = vt :/ (n.one - (b2 ** timestep))            
 
-        val corr = c.learningRate *: (mHat / (vHat.sqrt + eps))
+        val corr = c.learningRate * (mHat / (vHat.sqrt + eps))
         (corr, mt, vt)
       
       layers

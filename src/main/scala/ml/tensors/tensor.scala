@@ -39,7 +39,8 @@ case class Tensor1D[T: ClassTag](data: Array[T]) extends Tensor[T]:
   override def cols: Int = length
 
 object Tensor1D:
-  def apply[T: ClassTag](data: T*): Tensor1D[T] = Tensor1D[T](data.toArray)
+  def apply[T: ClassTag](data: T*): Tensor1D[T] = 
+    Tensor1D[T](data.toArray)
 
 case class Tensor2D[T: ClassTag](data: Array[Array[T]]) extends Tensor[T]:
   type A = Array[Array[T]]
@@ -66,32 +67,3 @@ case class Tensor2D[T: ClassTag](data: Array[Array[T]]) extends Tensor[T]:
 object Tensor2D:
   def apply[T: ClassTag](rows: Array[T]*): Tensor2D[T] =
     Tensor2D[T](rows.toArray)
-
-  def col[T: ClassTag](data: Array[Array[T]], i: Int): Array[T] =
-    val to = i + 1
-    slice(data, None, Some(i, to)).flatMap(_.headOption)
-
-  def slice[T: ClassTag](
-      data: Array[Array[T]],
-      rows: Option[(Int, Int)] = None,
-      cols: Option[(Int, Int)] = None
-  ): Array[Array[T]] =
-    (rows, cols) match
-      case (Some((rowsFrom, rowsTo)), Some((colsFrom, colsTo))) =>
-        sliceArr(data, (rowsFrom, rowsTo)).map(a =>
-          sliceArr(a, (colsFrom, colsTo))
-        )
-      case (None, Some((colsFrom, colsTo))) =>
-        data.map(a => sliceArr(a, (colsFrom, colsTo)))
-      case (Some((rowsFrom, rowsTo)), None) =>
-        sliceArr(data, (rowsFrom, rowsTo))
-      case _ => data
-
-  def sliceArr[T](
-      data: Array[T],
-      range: (Int, Int)
-  ): Array[T] =
-    val (l, r) = range
-    val from = if l < 0 then data.length + l else l
-    val to = if r < 0 then data.length + r else if r == 0 then data.length else r
-    data.slice(from, to)

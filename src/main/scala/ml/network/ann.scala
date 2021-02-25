@@ -26,10 +26,9 @@ case class Layer[T](
     f: ActivationFunc[T] = ActivationFuncApi.noActivation[T],
     units: Int = 1,
     state: Option[OptimizerState[T]] = None
-) {
+): 
   override def toString() = 
     s"\n(\nweight = $w,\nbias = $b,\nf = ${f.name},\nunits = $units)"
-}
 
 /*
  * z - before activation = w * x
@@ -46,8 +45,8 @@ sealed trait Model[T]:
   def metricValues: List[(Metric[T], List[Double])]
 
 object Model:
-  def getAvgLoss[T: ClassTag](losses: List[T])(using num: Fractional[T]): T =
-    transformAny[Float, T](num.toFloat(losses.sum) / losses.length)
+  def getAvgLoss[T: ClassTag](losses: List[T])(using n: Fractional[T]): T =
+    transformAny[Double, T](n.toDouble(losses.sum) / losses.length)
 
 object Sequential:
   def activate[T: Fractional: ClassTag](
@@ -93,14 +92,14 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
     lossFunc(y, predicted)  
 
   def add(layer: LayerCfg[T]): Sequential[T, U] =
-    copy(layerStack = (inputs) => {
+    copy(layerStack = (inputs) => 
       val currentLayers = layerStack(inputs)
       val prevInput = currentLayers.lastOption.map(_.units).getOrElse(inputs)
       val w = random2D(prevInput, layer.units)
       val b = zeros(layer.units)
       val optimizerState = optimizer.initState(w, b)
       (currentLayers :+ Layer(w, b, layer.f, layer.units, optimizerState))
-    })
+    )
 
   private def trainEpoch(
       batches: Array[(Array[Array[T]], Array[Array[T]])],
@@ -108,7 +107,7 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
       epoch: Int
   ) =
     val index = (1 to batches.length)
-    val (w, l, metricValue) =
+    val (trained, losses, metricValue) =
       batches.zip(index).foldLeft(layers, List.empty[T], List.fill(metrics.length)(0)) {
         case ((layers, batchLoss, epochMetrics), ((xBatch, yBatch), i)) =>
           // forward
@@ -131,7 +130,7 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
             .zip(epochMetrics).map(_ + _)
           (updated, batchLoss :+ loss, metricValues)
       }    
-    (w, getAvgLoss(l), metricValue)
+    (trained, getAvgLoss(losses), metricValue)
 
   def train(x: Tensor[T], y: Tensor[T], epochs: Int): Model[T] =
     lazy val actualBatches = y.batches(batchSize).toArray
@@ -165,7 +164,7 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
       .map((m, avg) => s"${m.name}: $avg")
       .mkString(", metrics: [", ";", "]")
     println(
-      s"epoch: $epoch/$epochs, avg. loss: $avgLoss${if (metrics.nonEmpty) metricsStat else ""}"
+      s"epoch: $epoch/$epochs, avg. loss: $avgLoss${if metrics.nonEmpty then metricsStat else ""}"
     )
 
   def reset(): Model[T] =

@@ -2,7 +2,7 @@ package ml.preprocessing
 
 import ml.transformation.{transform, transformArr}
 import ml.tensors.api._
-import ml.tensors.ops.T
+import ml.tensors.ops.{T, col, slice}
 
 import java.io.File
 import java.nio.file.Path
@@ -32,10 +32,10 @@ case class TextLoader(
   )
 
   def cols[T: ClassTag](from: Int, to: Int): Tensor2D[T] =
-    transform[T](Tensor2D.slice(data, None, Some((from, to))))
+    transform[T](data.slice(None, Some((from, to))))
 
   def col[T: ClassTag](i: Int): Tensor1D[T] =
-    val col = Tensor2D.col(data, i)
+    val col = data.col(i)
     Tensor1D(transformArr[T](col))
 
   def cols[T: ClassTag](i: Int): Tensor[T] = col(i).T
