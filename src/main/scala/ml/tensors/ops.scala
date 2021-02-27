@@ -228,10 +228,10 @@ object TensorOps:
       case Tensor1D(data) => Tensor1D(data.map(_ * scalar))
       case Tensor2D(data) => Tensor2D(data.map(_.map(_ * scalar)))
 
-  private def matMul[T: ClassTag: Numeric](
+  private def matMul[T: ClassTag](
       a: Array[Array[T]],
       b: Array[Array[T]]
-  ): Array[Array[T]] =
+  )(using n: Numeric[T]): Array[Array[T]] =
     assert(
       a.head.length == b.length,
       s"The number of columns in the first matrix should be equal to the number of rows in the second, ${a.head.length} != ${b.length}"
@@ -242,7 +242,7 @@ object TensorOps:
 
     for i <- (0 until rows).indices do
       for j <- (0 until cols).indices do
-        var sum = summon[Numeric[T]].zero
+        var sum = n.zero
         for k <- b.indices do
           sum = sum + (a(i)(k) * b(k)(j))
         res(i)(j) = sum
