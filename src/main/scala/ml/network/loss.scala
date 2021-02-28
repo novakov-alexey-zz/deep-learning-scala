@@ -1,6 +1,6 @@
 package ml.network
 
-import ml.transformation.transformAny
+import ml.transformation.castFromTo
 import ml.tensors.api._
 import ml.tensors.ops._
 
@@ -13,7 +13,7 @@ trait Loss[T]:
       predicted: Tensor[T]
   ): T
 
-trait LossApi:
+object LossApi:
   private def calcMetric[T: Fractional: ClassTag](
     t1: Tensor[T], t2: Tensor[T], f: (T, T) => T
   ) = 
@@ -28,30 +28,28 @@ trait LossApi:
       case (Tensor0D(a), Tensor0D(b)) =>        
         (f(a, b), 1)
       case _ => 
-        sys.error(s"Both tensors must be the same shape: ${t1.sizes} != ${t2.sizes}")
+        sys.error(s"Both tensors must be the same shape: ${t1.shape} != ${t2.shape}")
 
   def meanSquareError[T: ClassTag: Fractional] = new Loss[T]:
     def calc(a: T, b: T): T =      
-      transformAny[Double, T](math.pow(transformAny[T, Double](a - b), 2)) 
+      castFromTo[Double, T](math.pow(castFromTo[T, Double](a - b), 2)) 
 
     override def apply(
         actual: Tensor[T],
         predicted: Tensor[T]
     ): T =      
       val (sumScore, count) = calcMetric(actual, predicted, calc)      
-      val meanSumScore = 1.0 / count * transformAny[T, Double](sumScore)
-      transformAny(meanSumScore) 
+      val meanSumScore = 1.0 / count * castFromTo[T, Double](sumScore)
+      castFromTo(meanSumScore) 
 
   def binaryCrossEntropy[T: ClassTag](using n: Fractional[T]) = new Loss[T]:
     def calc(a: T, b: T): T = 
-      transformAny[Double, T](n.toDouble(a) * math.log(1e-15 + n.toDouble(b))) 
+      castFromTo[Double, T](n.toDouble(a) * math.log(1e-15 + n.toDouble(b))) 
 
     override def apply(
         actual: Tensor[T],
         predicted: Tensor[T]
     ): T =
       val (sumScore, count) = calcMetric(actual, predicted, calc)        
-      val meanSumScore = 1.0 / count * transformAny[T, Double](sumScore)
-      transformAny(-meanSumScore)        
-
-object LossApi extends LossApi  
+      val meanSumScore = 1.0 / count * castFromTo[T, Double](sumScore)
+      castFromTo(-meanSumScore)

@@ -1,5 +1,5 @@
 import ml.preprocessing._
-import ml.transformation.transform
+import ml.transformation.castTo
 import ml.tensors.api._
 import ml.tensors.ops._
 import ml.network.api._
@@ -20,7 +20,7 @@ import scala.util.Using
     
     val label = t => encoder.transform(t, 2)
     val hot = t => hotEncoder.transform(t, 1)
-    val typeTransform = (t: Tensor2D[String]) => transform[T](t.data)
+    val typeTransform = (t: Tensor2D[String]) => castTo[T](t.data)
     
     label andThen hot andThen typeTransform
   

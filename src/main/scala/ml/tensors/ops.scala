@@ -1,7 +1,7 @@
 package ml.tensors
 
 import ml.tensors.api._
-import ml.transformation.transformAny
+import ml.transformation.castFromTo
 
 import scala.reflect.ClassTag
 import math.Numeric.Implicits.infixNumericOps
@@ -51,7 +51,7 @@ object ops extends genOps:
     def as2D: Tensor2D[T] = Tensor2D(Array(Array(t)))       
     
   extension [T: ClassTag](t: T)(using n: Numeric[T])    
-    def **(to: Int): T = transformAny[Double, T](math.pow(n.toDouble(t), to))
+    def **(to: Int): T = castFromTo[Double, T](math.pow(n.toDouble(t), to))
   
   implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T):
     // dot product
@@ -91,11 +91,6 @@ object ops extends genOps:
       t.data.grouped(batchSize)
 
 object TensorOps:
-  def of[T: ClassTag](size: Int): Tensor1D[T] =
-    Tensor1D[T](Array.ofDim[T](size))
-
-  def of[T: ClassTag](size: Int, size2: Int): Tensor2D[T] =
-    Tensor2D[T](Array.fill(size)(of[T](size2).data))
 
   def subtract[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match
@@ -106,8 +101,8 @@ object TensorOps:
         )        
         Tensor1D(data.zip(data2).map(_ - _))
       case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>
-        val (rows, cols) = t1.sizes2D
-        val (rows2, cols2) = t2.sizes2D
+        val (rows, cols) = t1.shape2D
+        val (rows2, cols2) = t2.shape2D
         assert(
           rows == rows2 && cols == cols2,
           s"Matrices must have the same amount of rows and size, ${(rows, cols)} ! = ${(rows2, cols2)}"
@@ -162,7 +157,7 @@ object TensorOps:
       t1: Tensor2D[T],
       t2: Tensor1D[T]
   ) =
-    val (rows, cols) = t1.sizes2D
+    val (rows, cols) = t1.shape2D
     assert(
       cols == t2.length,
       s"tensors must have the same amount of cols to sum them up element-wise, but were: $cols != ${t2.length}"
@@ -214,7 +209,7 @@ object TensorOps:
           res(i) = map2(data(i), data2(i), f)
         Tensor2D(res)
       case _ => 
-        sys.error(s"Both tensors must have the same dimension: ${a.sizes} != ${b.sizes}")
+        sys.error(s"Both tensors must have the same dimension: ${a.shape} != ${b.shape}")
 
   private def colsCount[T](a: Array[Array[T]]): Int =
     a.headOption.map(_.length).getOrElse(0)
@@ -290,7 +285,7 @@ object TensorOps:
   def transpose[T: ClassTag](t: Tensor[T]): Tensor[T] =
     t match
       case t2 @ Tensor2D(data) =>
-        val (rows, cols) = t2.sizes2D
+        val (rows, cols) = t2.shape2D
         val transposed = Array.ofDim[T](cols, rows)
 
         for i <- (0 until rows).indices do
@@ -341,7 +336,7 @@ object TensorOps:
       case (Tensor1D(data), Tensor1D(data2)) =>
         Tensor1D(data.zip(data2).map((a, b) => a * b))
       case (a @ Tensor2D(data), Tensor2D(data2)) =>
-        val (rows, cols) = a.sizes2D
+        val (rows, cols) = a.shape2D
         val sum = Array.ofDim[T](rows, cols)
         for i <- 0 until rows do
           for j <- 0 until cols do
@@ -359,7 +354,7 @@ object TensorOps:
       case Tensor0D(data) => Iterator(Array(Array(data)))
 
   def equalRows[T: ClassTag](t1: Tensor[T], t2: Tensor[T]): Int = 
-    assert(t1.sizes == t2.sizes, sys.error(s"Tensors must be the same dimension: ${t1.sizes} != ${t2.sizes}"))
+    assert(t1.shape == t2.shape, sys.error(s"Tensors must be the same dimension: ${t1.shape} != ${t2.shape}"))
     (t1, t2) match
       case (Tensor0D(data), Tensor0D(data2)) => 
         if data == data2 then 1 else 0
@@ -368,7 +363,7 @@ object TensorOps:
       case (Tensor2D(data), Tensor2D(data2)) => 
         data.zip(data2).foldLeft(0) { case (acc, (a, b)) => if a.sameElements(b) then acc + 1 else acc }
       case _ => 
-        sys.error(s"Tensors must be the same dimension: ${t1.sizes} != ${t2.sizes}")
+        sys.error(s"Tensors must be the same dimension: ${t1.shape} != ${t2.shape}")
   
   def clipInRange[T: ClassTag](t: Tensor[T], min: T, max: T)(using n: Numeric[T]): Tensor[T] =
     def clipValue(v: T) =
@@ -397,20 +392,17 @@ object TensorOps:
       case _ => sys.error(s"Not implemented for $t1 \n and $t2")
   
   def sqrt[T: ClassTag: Numeric](t: Tensor[T]): Tensor[T] = 
-    map(t, v => transformAny[Double, T](math.sqrt(transformAny[T, Double](v))))
+    map(t, v => castFromTo[Double, T](math.sqrt(castFromTo[T, Double](v))))
 
   def pow[T: ClassTag](t: Tensor[T], to: Int)(using n: Numeric[T]): Tensor[T] =
-    def _pow(v: T) =
+    def powValue(v: T) =
       val res = math.pow(n.toDouble(v), to)
-      transformAny[Double, T](res)
+      castFromTo[Double, T](res)
 
     t match
-      case Tensor0D(data) =>           
-        Tensor0D(_pow(data))
-      case Tensor1D(data) =>
-        Tensor1D(data.map(_pow))
-      case Tensor2D(data) =>
-        Tensor2D(data.map(_.map(_pow)))
+      case Tensor0D(data) => Tensor0D(powValue(data))
+      case Tensor1D(data) => Tensor1D(data.map(powValue))
+      case Tensor2D(data) => Tensor2D(data.map(_.map(powValue)))
   
   def zero[T: ClassTag](t: Tensor[T])(using n: Numeric[T]): Tensor[T] =
     map(t, _ => n.zero)

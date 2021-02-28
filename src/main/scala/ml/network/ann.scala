@@ -1,7 +1,7 @@
 package ml.network 
 
 import ml.network.RandomGen._
-import ml.transformation.transformAny
+import ml.transformation.castFromTo
 import ml.tensors.api._
 import ml.tensors.ops._
 
@@ -46,7 +46,7 @@ sealed trait Model[T]:
 
 object Model:
   def getAvgLoss[T: ClassTag](losses: List[T])(using n: Fractional[T]): T =
-    transformAny[Double, T](n.toDouble(losses.sum) / losses.length)
+    castFromTo[Double, T](n.toDouble(losses.sum) / losses.length)
 
 object Sequential:
   def activate[T: Fractional: ClassTag](

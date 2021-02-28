@@ -1,6 +1,6 @@
 package ml.network
 
-import ml.transformation.transformAny
+import ml.transformation.castFromTo
 import ml.tensors.api._
 
 import scala.reflect.ClassTag
@@ -18,4 +18,4 @@ object RandomGen:
 
   given uniform[T: Numeric: ClassTag]: RandomGen[T] with
     override def gen: T = 
-      transformAny[Double, T](math.random().toDouble + 0.001d)
+      castFromTo[Double, T](math.random().toDouble + 0.001d)

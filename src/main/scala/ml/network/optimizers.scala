@@ -2,7 +2,7 @@ package ml.network
 
 import ml.tensors.api._
 import ml.tensors.ops._
-import ml.transformation.transformAny
+import ml.transformation.castFromTo
 
 import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
@@ -129,17 +129,15 @@ object AdamCfg:
 
   def default[T: ClassTag]: AdamCfg[T] =
     AdamCfg[T](
-      transformAny[Double, T](0.9),
-      transformAny[Double, T](0.999),
-      transformAny[Double, T](10E-8)
+      castFromTo[Double, T](0.9),
+      castFromTo[Double, T](0.999),
+      castFromTo[Double, T](10E-8)
     )
 
 trait GradientClipping[T] extends (Tensor[T] => Tensor[T]) 
 
-trait GradientClippingApi:
+object GradientClippingApi:
   def clipByValue[T: Fractional: ClassTag](value: T): GradientClipping[T] = 
     _.clipInRange(-value, value)
 
   def noClipping[T]: GradientClipping[T] = t => t
-
-object GradientClippingApi extends GradientClippingApi  

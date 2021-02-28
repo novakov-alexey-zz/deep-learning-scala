@@ -1,6 +1,6 @@
 package ml.preprocessing
 
-import ml.transformation.{transform, transformArr}
+import ml.transformation.{castTo, castArray}
 import ml.tensors.api._
 import ml.tensors.ops.{T, col, slice}
 
@@ -32,10 +32,10 @@ case class TextLoader(
   )
 
   def cols[T: ClassTag](from: Int, to: Int): Tensor2D[T] =
-    transform[T](data.slice(None, Some((from, to))))
+    castTo[T](data.slice(None, Some((from, to))))
 
   def col[T: ClassTag](i: Int): Tensor1D[T] =
     val col = data.col(i)
-    Tensor1D(transformArr[T](col))
+    Tensor1D(castArray[T](col))
 
   def cols[T: ClassTag](i: Int): Tensor[T] = col(i).T

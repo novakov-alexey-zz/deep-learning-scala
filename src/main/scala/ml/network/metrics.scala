@@ -20,7 +20,7 @@ trait Metric[T]:
     val correct = calculate(actual, predicted)
     average(actual.length, correct)
 
-trait MetricApi:
+object MetricApi:
   def predictedToBinary[T](v: T)(using n: Fractional[T]): T =
     if n.toDouble(v) > 0.5 then n.one else n.zero
 
@@ -33,5 +33,3 @@ trait MetricApi:
     ): Int =      
         val predictedNormalized = predicted.map(predictedToBinary)
         actual.equalRows(predictedNormalized)      
-
-object MetricApi extends MetricApi

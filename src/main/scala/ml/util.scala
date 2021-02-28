@@ -6,6 +6,6 @@ def store(filename: String, header: String, data: List[List[String]]) =
   Using.resource(new PrintWriter(new File(filename))) { w =>
     w.write(header)
     data.foreach { row =>      
-    w.write(s"\n${row.mkString(",")}")        
+      w.write(s"\n${row.mkString(",")}")
     }
   }
