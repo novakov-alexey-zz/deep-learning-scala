@@ -28,7 +28,7 @@ private trait genOps:
     def sqr: Tensor[T] = TensorOps.pow(t, 2)
     def /(that: Tensor[T]): Tensor[T] = TensorOps.div(t, that)
     def :/(that: T): Tensor[T] = TensorOps.div(t, Tensor0D(that))
-    def sqrt: Tensor[T] = TensorOps.sqrt(t)    
+    def sqrt: Tensor[T] = TensorOps.sqrt(t)
 
 object ops extends genOps:
   extension [T: ClassTag](t: Tensor2D[T])
@@ -240,7 +240,7 @@ object TensorOps:
         var sum = n.zero
         for k <- b.indices do
           sum = sum + (a(i)(k) * b(k)(j))
-        res(i)(j) = sum
+        res(i)(j) = sum    
     res
 
   def combineAll[T: ClassTag](ts: List[Tensor1D[T]]): Tensor1D[T] =

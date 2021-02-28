@@ -2,16 +2,17 @@ package ml
 
 import ml.tensors.api._
 import ml.tensors.ops._
-import ImplicitConfigHelper._
+import TypeHelper._
 import scala.reflect.ClassTag
 
-object ImplicitConfigHelper:
+object TypeHelper:
   val String_ = classOf[String]
   val Int_ = classOf[Int]
   val Long_ = classOf[Long]
   val Float_ = classOf[Float]
   val Double_ = classOf[Double]
 
+// set of functions to parse and cast in the same time  
 object transformation:
 
   def castTo[T: ClassTag](

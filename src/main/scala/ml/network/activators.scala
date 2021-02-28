@@ -6,7 +6,7 @@ import ml.tensors.ops._
 
 import scala.reflect.ClassTag
 
-trait ActivationFunc[T] extends (Tensor[T] => Tensor[T]):
+trait ActivationFunc[T]:
   val name: String
   def apply(x: Tensor[T]): Tensor[T]
   def derivative(x: Tensor[T]): Tensor[T]
@@ -29,8 +29,8 @@ object ActivationFuncApi:
 
     override def derivative(x: Tensor[T]): Tensor[T] =
       x.map(t => castFromTo[Double, T](
-          math.exp(-n.toDouble(t)) / math.pow(1 + math.exp(-n.toDouble(t)), 2)
-        ))
+        math.exp(-n.toDouble(t)) / math.pow(1 + math.exp(-n.toDouble(t)), 2)
+      ))
     
     override val name = "sigmoid"  
 

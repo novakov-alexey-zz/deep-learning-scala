@@ -45,8 +45,7 @@ object Tensor1D:
 
 case class Tensor2D[T: ClassTag](data: Array[Array[T]]) extends Tensor[T]:
   override def shape: List[Int] =
-    val (r, c) = shape2D
-    List(r, c)
+    shape2D.toList    
 
   def shape2D: (Int, Int) =
     (data.length, data.headOption.map(_.length).getOrElse(0))
