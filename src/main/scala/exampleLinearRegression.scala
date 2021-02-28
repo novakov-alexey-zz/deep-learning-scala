@@ -11,7 +11,7 @@ import scala.collection.parallel.CollectionConverters._
 
 import java.io.{File,PrintWriter}
 
-@main def linearRegression() =       
+@main def linearRegression() =
   val random = new Random(100)
   val weight = random.nextFloat()
   val bias = random.nextFloat()

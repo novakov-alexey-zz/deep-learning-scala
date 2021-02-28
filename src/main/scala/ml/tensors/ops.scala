@@ -10,7 +10,7 @@ import math.Fractional.Implicits.infixFractionalOps
 import math.Integral.Implicits.infixIntegralOps
 
 private trait genOps:    
-  extension [T: ClassTag: Fractional](t: Tensor[T])
+  extension [T: ClassTag: Numeric](t: Tensor[T])
     // dot product    
     def *(that: Tensor[T]): Tensor[T] = TensorOps.mul(t, that)    
     def -(that: T): Tensor[T] = TensorOps.subtract(t, Tensor0D(that))
@@ -25,24 +25,26 @@ private trait genOps:
     def equalRows(that: Tensor[T]): Int = TensorOps.equalRows(t, that)
     def clipInRange(min: T, max: T): Tensor[T] = TensorOps.clipInRange(t, min, max)
     def :**(to: Int): Tensor[T] = TensorOps.pow(t, to)
-    def sqr: Tensor[T] = TensorOps.pow(t, 2)
+    def sqr: Tensor[T] = TensorOps.pow(t, 2)    
+    def sqrt: Tensor[T] = TensorOps.sqrt(t)
+    def zero: Tensor[T] = TensorOps.zero(t)
+
+  extension [T: ClassTag: Fractional](t: Tensor[T])
     def /(that: Tensor[T]): Tensor[T] = TensorOps.div(t, that)
     def :/(that: T): Tensor[T] = TensorOps.div(t, Tensor0D(that))
-    def sqrt: Tensor[T] = TensorOps.sqrt(t)
+
+  extension [T: ClassTag](t: Tensor[T])
+    def T: Tensor[T] = TensorOps.transpose(t)    
+    def map[U: ClassTag](f: T => U): Tensor[U] = TensorOps.map[T, U](t, f)  
+    def as2D: Tensor2D[T] = TensorOps.as2D(t)    
 
 object ops extends genOps:
   extension [T: ClassTag](t: Tensor2D[T])
     def col(i: Int): Tensor1D[T] = Tensor1D(TensorOps.col(t.data, i))
     def T: Tensor2D[T] = TensorOps.transpose(t).asInstanceOf[Tensor2D[T]]
-  
+    
   extension [T: ClassTag](t: Tensor[T])
-    def T: Tensor[T] = TensorOps.transpose(t)
-    def as1D: Tensor1D[T] = TensorOps.as1D(t)
-    def as2D: Tensor2D[T] = TensorOps.as2D(t)    
-    def map[U: ClassTag](f: T => U): Tensor[U] = TensorOps.map[T, U](t, f)  
-
-  extension [T: Numeric: ClassTag](t: Tensor[T])
-    def zero: Tensor[T] = TensorOps.zero(t)   
+    def as1D: Tensor1D[T] = TensorOps.as1D(t)    
 
   extension [T: ClassTag](t: T)
     def asT: Tensor[T] = Tensor0D(t)
@@ -135,11 +137,11 @@ object TensorOps:
   def plus[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match
       case (Tensor1D(data), Tensor1D(data2)) =>
-        Tensor1D(data.zip(data2).map {(a, b) => a + b })
+        Tensor1D(data.zip(data2).map {(a, b) => a + b }) // TODO: check both shapes are equal
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ + data2)))
       case (Tensor2D(data), Tensor2D(data2)) =>
-        Tensor2D(data.zip(data2).map((a, b) => a.zip(b).map(_ + _)))
+        Tensor2D(data.zip(data2).map((a, b) => a.zip(b).map(_ + _))) // TODO: check both shapes are equal
       case (Tensor0D(data), Tensor2D(data2)) =>
         Tensor2D(data2.map(_.map(_ + data)))
       case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) =>
