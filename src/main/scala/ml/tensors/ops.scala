@@ -35,8 +35,7 @@ private trait genOps:
 
   extension [T: ClassTag](t: Tensor[T])
     def T: Tensor[T] = TensorOps.transpose(t)    
-    def map[U: ClassTag](f: T => U): Tensor[U] = TensorOps.map[T, U](t, f)  
-    def as2D: Tensor2D[T] = TensorOps.as2D(t)    
+    def map[U: ClassTag](f: T => U): Tensor[U] = TensorOps.map[T, U](t, f)          
 
 object ops extends genOps:
   extension [T: ClassTag](t: Tensor2D[T])
@@ -45,6 +44,7 @@ object ops extends genOps:
     
   extension [T: ClassTag](t: Tensor[T])
     def as1D: Tensor1D[T] = TensorOps.as1D(t)    
+    def as2D: Tensor2D[T] = TensorOps.as2D(t)
 
   extension [T: ClassTag](t: T)
     def asT: Tensor[T] = Tensor0D(t)

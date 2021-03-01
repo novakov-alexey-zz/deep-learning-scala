@@ -15,11 +15,11 @@ import scala.util.Using
   def createEncoders[T: Numeric: ClassTag](
     data: Tensor2D[String]
   ): Tensor2D[String] => Tensor2D[T] =
-    val encoder = LabelEncoder[String]().fit(data.col(2))
-    val hotEncoder = OneHotEncoder[String, T]().fit(data.col(1))
-    
-    val label = t => encoder.transform(t, 2)
+    val hotEncoder = OneHotEncoder[String, T]().fit(data.col(1)) // geography
+    val encoder = LabelEncoder[String]().fit(data.col(2)) // gender
+
     val hot = t => hotEncoder.transform(t, 1)
+    val label = t => encoder.transform(t, 2)
     val typeTransform = (t: Tensor2D[String]) => castTo[T](t.data)
     
     label andThen hot andThen typeTransform

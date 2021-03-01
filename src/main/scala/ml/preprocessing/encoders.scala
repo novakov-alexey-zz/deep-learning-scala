@@ -14,7 +14,7 @@ object Encoder:
   ): Map[T, U] =
     samples.data.distinct.sorted.zipWithIndex.toMap.view
       .mapValues(castFromTo[Int, U])
-      .toMap[T, U]
+      .toMap
       
 case class LabelEncoder[T: ClassTag: Ordering](
     classes: Map[T, T] = Map.empty[T, T]
@@ -24,12 +24,16 @@ case class LabelEncoder[T: ClassTag: Ordering](
 
   def transform(t: Tensor2D[T], col: Int): Tensor2D[T] =
     val data = t.data.map(
-      _.zipWithIndex.map { case (d, i) =>
+      _.zipWithIndex.map { (d, i) =>
         if i == col then classes.getOrElse(d, d) else d
       }
     )
     Tensor2D(data)
 
+/**
+ * T - key type
+ * U - numeric value type for the key type
+ */
 case class OneHotEncoder[
     T: Ordering: ClassTag,
     U: Numeric: Ordering: ClassTag
@@ -46,9 +50,9 @@ case class OneHotEncoder[
       row.zipWithIndex
         .foldLeft(ArrayBuffer.empty[T]) { case (acc, (d, i)) =>
           if i == col then
-            val pos = classes.get(d)
             val zero = castFromTo[Int, T](0)
             val array = Array.fill[T](classes.size)(zero)
+            val pos = classes.get(d)
             pos match
               case Some(p) =>
                 array(num.toInt(p)) = castFromTo[U, T](num.one)
