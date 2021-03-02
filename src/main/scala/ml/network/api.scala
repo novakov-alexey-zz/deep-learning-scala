@@ -1,8 +1,9 @@
 package ml.network
 
 object api:  
-  final type SimpleGD = ml.network.SimpleGD
+  final type StandardGD = ml.network.StandardGD
   final type Adam = ml.network.Adam
+  final type Stub = ml.network.Stub
 
   import ml.network.RandomGen.given
   

@@ -8,7 +8,8 @@ import scala.reflect.ClassTag
 trait Metric[T]:
   val name: String
 
-  def calculate(
+  // number of matched predictions versus actual labels
+  def matches(
       actual: Tensor[T],
       predicted: Tensor[T]
   ): Int
@@ -17,7 +18,7 @@ trait Metric[T]:
     correct.toDouble / count
 
   def apply(actual: Tensor[T], predicted: Tensor[T]): Double =
-    val correct = calculate(actual, predicted)
+    val correct = matches(actual, predicted)
     average(actual.length, correct)
 
 object MetricApi:
@@ -27,7 +28,7 @@ object MetricApi:
   def accuracyBinaryClassification[T: ClassTag: Fractional] = new Metric[T]:
     val name = "accuracy"
 
-    def calculate(
+    def matches(
         actual: Tensor[T],
         predicted: Tensor[T]
     ): Int =      

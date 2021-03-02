@@ -9,9 +9,10 @@ import scala.math.Numeric.Implicits._
 
 // suported Optimizers
 type Adam
-type SimpleGD
+type StandardGD
+type Stub
 
-sealed trait Optimizer[U]:
+trait Optimizer[U]:
 
   def updateWeights[T: ClassTag](
       weights: List[Layer[T]],
@@ -24,6 +25,15 @@ sealed trait Optimizer[U]:
   def initState[T: ClassTag: Numeric](w: Tensor[T], b: Tensor[T]): Option[OptimizerState[T]] = None
 
 object optimizers:
+  given Optimizer[Stub] with
+    override def updateWeights[T: ClassTag](
+        layers: List[Layer[T]],
+        activations: List[Activation[T]],
+        error: Tensor[T],
+        c: OptimizerCfg[T],
+        timestep: Int
+    )(using n: Fractional[T]): List[Layer[T]] = layers
+
   given Optimizer[Adam] with        
 
     override def initState[T: ClassTag: Numeric](w: Tensor[T], b: Tensor[T]): Option[OptimizerState[T]] =
@@ -80,7 +90,8 @@ object optimizers:
         }
         ._1    
 
-  given Optimizer[SimpleGD] with
+  given Optimizer[StandardGD] with
+
     override def updateWeights[T: ClassTag](
         layers: List[Layer[T]],
         activations: List[Activation[T]],
@@ -96,13 +107,13 @@ object optimizers:
           None: Option[Tensor[T]]
         ) {
           case (
-                (l @ Layer(w, b, f, u, s), Activation(x, z, _)),
+                (l @ Layer(w, b, f, _, _), Activation(x, z, _)),
                 (ls, prevDelta, prevWeight)
               ) =>            
-            val delta = (prevWeight match {
+            val delta = (prevWeight match 
               case Some(pw) => prevDelta * pw.T
               case None     => prevDelta
-            }) multiply f.derivative(z)
+            ) multiply f.derivative(z)
 
             val wGradient = cfg.clip(x.T * delta)
             val bGradient = cfg.clip(delta).sum

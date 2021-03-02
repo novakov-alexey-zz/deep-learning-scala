@@ -49,7 +49,7 @@ object Model:
     castFromTo[Double, T](n.toDouble(losses.sum) / losses.length)
 
 object Sequential:
-  def activate[T: Fractional: ClassTag](
+  def activate[T: Numeric: ClassTag](
       input: Tensor[T],
       layers: List[Layer[T]]
   ): List[Activation[T]] =
@@ -65,15 +65,17 @@ object Sequential:
 
 case class TrainHistory[T](layers: List[List[Layer[T]]] = Nil, losses: List[T] = Nil)
 
+type MetricValues[T] = List[(Metric[T], List[Double])]
+
 case class Sequential[T: ClassTag: RandomGen: Fractional, U](
     lossFunc: Loss[T],    
     learningRate: T,
     metrics: List[Metric[T]] = Nil,
     batchSize: Int = 16,
-    layerStack: Int => List[Layer[T]] = (_: Int) => List.empty[Layer[T]],    
+    layerStack: Int => List[Layer[T]] = _ => List.empty[Layer[T]],    
     layers: List[Layer[T]] = Nil,
     history: TrainHistory[T] = TrainHistory[T](),    
-    metricValues: List[(Metric[T], List[Double])] = Nil,
+    metricValues: MetricValues[T] = Nil,
     gradientClipping: GradientClipping[T] = GradientClippingApi.noClipping[T],
     cfg: Option[OptimizerCfg[T]] = None
 )(using optimizer: Optimizer[U]) extends Model[T]:
@@ -125,32 +127,29 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
             optimizerCfg,
             i * epoch
           )
-          val metricValues = metrics
-            .map(_.calculate(actual, predicted))
+          val matches = metrics
+            .map(_.matches(actual, predicted))
             .zip(epochMetrics).map(_ + _)
-          (updated, batchLoss :+ loss, metricValues)
+          (updated, batchLoss :+ loss, matches)
       }    
     (trained, getAvgLoss(losses), metricValue)
 
   def train(x: Tensor[T], y: Tensor[T], epochs: Int): Model[T] =
     lazy val actualBatches = y.batches(batchSize).toArray
-    lazy val xBatches = x.batches(batchSize).zip(actualBatches).toArray
+    lazy val batches = x.batches(batchSize).zip(actualBatches).toArray
     val inputs = x.cols
-    val l = getOrInitLayers(inputs)
-    val emptyMetrics = metrics.map(_ -> List.empty[Double])
+    val currentLayers = getOrInitLayers(inputs)
+    val initialMetrics = metrics.map(_ -> List.empty[Double])
 
     val (updatedLayers, lHistory, epochLosses, metricValues) =
-      (1 to epochs).foldLeft(l, List.empty[List[Layer[T]]], List.empty[T], emptyMetrics) {
-        case ((weights, lHistory, losses, metricsList), epoch) =>
-          val (l, avgLoss, epochMetric) = trainEpoch(xBatches, weights, epoch)
+      (1 to epochs).foldLeft(currentLayers, List.empty[List[Layer[T]]], List.empty[T], initialMetrics) {
+        case ((layers, lHistory, losses, trainingMetrics), epoch) =>
+          val (trainedLayers, avgLoss, epochMatches) = trainEpoch(batches, layers, epoch)
           
-          val epochMetricAvg = metrics.zip(epochMetric).map((m, value) => m -> m.average(x.length, value))
+          val (epochMetrics, epochMetricAvg) = updateMetrics(epochMatches, trainingMetrics, x.length)
           printMetrics(epoch, epochs, avgLoss, epochMetricAvg)          
-          val epochMetrics = epochMetricAvg.zip(metricsList).map { 
-            case ((_, v), (trainingMetric, values)) => trainingMetric -> (values :+ v)
-          }
 
-          (l, lHistory :+ l, losses :+ avgLoss, epochMetrics)
+          (trainedLayers, lHistory :+ trainedLayers, losses :+ avgLoss, epochMetrics)
       }
 
     copy(
@@ -158,6 +157,17 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
       history = history.copy(losses = epochLosses, layers = lHistory), 
       metricValues = metricValues
     )
+
+  private def updateMetrics(    
+    observedMatches: List[Int],     
+    currentMetrics: MetricValues[T],
+    samples: Int
+  ) =
+    val observedAvg = metrics.zip(observedMatches).map((m, matches) => m -> m.average(samples, matches))    
+    val updatedMetrics = observedAvg.zip(currentMetrics).map { 
+      case ((_, v), (currentMetric, values)) => currentMetric -> (values :+ v)
+    }
+    (updatedMetrics, observedAvg)
 
   private def printMetrics(epoch: Int, epochs: Int, avgLoss: T, values: List[(Metric[T], Double)]) = 
     val metricsStat = values
@@ -171,5 +181,5 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
     copy(layers = Nil)
 
   private def getOrInitLayers(inputs: Int) =
-    if layers == Nil then layerStack(inputs)
+    if layers.isEmpty then layerStack(inputs)
     else layers

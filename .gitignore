@@ -7,6 +7,6 @@ target
 .bsp
 metals.sbt
 .bloop
-
+.DS_Store
 notebooks
 metrics
