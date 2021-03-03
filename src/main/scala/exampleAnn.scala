@@ -63,11 +63,12 @@ import scala.util.Using
     "n/a,n/a,n/a,600,France,Male,40,3,60000,2,1,1,50000,n/a"
   ).cols[String](3, -1)
   val testExample = prepareData(example)
-  val exited = predictedToBinary(model.predict(testExample).as1D.data.head) == 1
+  val yHat = model(testExample)
+  val exited = predictedToBinary(yHat.as0D.data) == 1d
   println(s"Exited customer? $exited")
   
   // Test Dataset
-  val testPredicted = model.predict(xTest)
+  val testPredicted = model(xTest)
   val value = accuracy(yTest, testPredicted)
   println(s"test accuracy = $value")  
 

@@ -48,7 +48,7 @@ import java.io.{File,PrintWriter}
   println(s"true bias: $bias")
 
   // Test Dataset
-  val testPredicted = model.predict(xTest)  
+  val testPredicted = model(xTest)  
   val value = meanSquareError[Double].apply(yTest.T, testPredicted)
   println(s"test meanSquareError = $value")
 

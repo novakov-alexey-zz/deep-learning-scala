@@ -43,6 +43,7 @@ object ops extends genOps:
     def T: Tensor2D[T] = TensorOps.transpose(t).asInstanceOf[Tensor2D[T]]
     
   extension [T: ClassTag](t: Tensor[T])
+    def as0D: Tensor0D[T] = TensorOps.as0D(t)    
     def as1D: Tensor1D[T] = TensorOps.as1D(t)    
     def as2D: Tensor2D[T] = TensorOps.as2D(t)
 
@@ -266,6 +267,12 @@ object TensorOps:
       case (Tensor2D(data), t2 @ Tensor1D(_))   => combine(Tensor1D(data.flatten), t2)
       case (Tensor2D(data), Tensor2D(data2))    =>  combine(Tensor1D(data.flatten), Tensor1D(data2.flatten))
 
+  def as0D[T: ClassTag](t: Tensor[T]): Tensor0D[T] =
+    t match
+      case Tensor0D(data)   => Tensor0D(data)
+      case t1 @ Tensor1D(data) => Tensor0D(data.head)
+      case Tensor2D(data)   => Tensor0D(data.head.head)
+  
   def as1D[T: ClassTag](t: Tensor[T]): Tensor1D[T] =
     t match
       case Tensor0D(data)   => Tensor1D(data)

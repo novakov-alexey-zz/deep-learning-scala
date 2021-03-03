@@ -40,7 +40,9 @@ sealed trait Model[T]:
   def reset(): Model[T]
   def train(x: Tensor[T], y: Tensor[T], epochs: Int): Model[T]
   def layers: List[Layer[T]]
-  def predict(x: Tensor[T], weightList: List[Layer[T]] = layers): Tensor[T]
+  def predict(x: Tensor[T], customLayers: List[Layer[T]] = layers): Tensor[T]
+  def apply(x: Tensor[T], customLayers: List[Layer[T]] = layers): Tensor[T] = 
+    predict(x, customLayers)
   def history: TrainHistory[T]
   def metricValues: List[(Metric[T], List[Double])]
 
@@ -86,8 +88,8 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
   def withCfg(cfg: OptimizerCfg[T]) =
     copy(cfg = Some(cfg))
 
-  def predict(x: Tensor[T], l: List[Layer[T]] = layers): Tensor[T] =
-    activate(x, l).last.a
+  def predict(x: Tensor[T], inputLayers: List[Layer[T]] = layers): Tensor[T] =
+    activate(x, inputLayers).last.a
 
   def loss(x: Tensor[T], y: Tensor[T], w: List[Layer[T]]): T =
     val predicted = predict(x, w)    

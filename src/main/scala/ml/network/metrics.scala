@@ -22,7 +22,7 @@ trait Metric[T]:
     average(actual.length, correct)
 
 object MetricApi:
-  def predictedToBinary[T](v: T)(using n: Fractional[T]): T =
+  def predictedToBinary[T](v: T)(using n: Numeric[T]): T =
     if n.toDouble(v) > 0.5 then n.one else n.zero
 
   def accuracyBinaryClassification[T: ClassTag: Fractional] = new Metric[T]:
