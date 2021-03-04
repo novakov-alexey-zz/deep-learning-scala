@@ -97,19 +97,14 @@ object TensorOps:
 
   def subtract[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match
-      case (Tensor1D(data), Tensor1D(data2)) =>
-        assert(
-          data.length == data2.length,
-          s"Vectors must have the same length, ${data.length} ! = ${data2.length}"
-        )        
+      case (Tensor1D(data), Tensor1D(data2)) =>        
+        checkShapeEquality(a, b)        
         Tensor1D(data.zip(data2).map(_ - _))
       case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>
         val (rows, cols) = t1.shape2D
-        val (rows2, cols2) = t2.shape2D
-        assert(
-          rows == rows2 && cols == cols2,
-          s"Matrices must have the same amount of rows and size, ${(rows, cols)} ! = ${(rows2, cols2)}"
-        )
+        val (rows2, cols2) = t2.shape2D        
+        checkShapeEquality(a, b)
+        
         val res = Array.ofDim[T](rows, cols)
         for i <- data.indices do
           for j <- 0 until cols do
@@ -135,14 +130,19 @@ object TensorOps:
     val res = matrix.data.map(_.zip(vector.data).map{(a, b) => a - b })
     Tensor2D(res)
 
+  private def checkShapeEquality[T](a: Tensor[T],  b: Tensor[T]) = 
+    assert(a.shape == b.shape, s"Tensors must have the same shape: ${a.shape} != ${b.shape}")
+
   def plus[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match
       case (Tensor1D(data), Tensor1D(data2)) =>
-        Tensor1D(data.zip(data2).map {(a, b) => a + b }) // TODO: check both shapes are equal
+        checkShapeEquality(a, b)
+        Tensor1D(data.zip(data2).map {(a, b) => a + b })
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ + data2)))
       case (Tensor2D(data), Tensor2D(data2)) =>
-        Tensor2D(data.zip(data2).map((a, b) => a.zip(b).map(_ + _))) // TODO: check both shapes are equal
+        checkShapeEquality(a, b)
+        Tensor2D(data.zip(data2).map((a, b) => a.zip(b).map(_ + _)))
       case (Tensor0D(data), Tensor2D(data2)) =>
         Tensor2D(data2.map(_.map(_ + data)))
       case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) =>
