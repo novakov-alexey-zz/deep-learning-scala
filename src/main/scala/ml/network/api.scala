@@ -11,7 +11,7 @@ object api:
   export ml.network.optimizers.given
   export ml.network.Layer
   export ml.network.Sequential
-  export ml.network.GradientClippingApi._
-  export ml.network.MetricApi._
-  export ml.network.LossApi._
-  export ml.network.ActivationFuncApi._
+  export ml.network.GradientClippingApi.*
+  export ml.network.MetricApi.*
+  export ml.network.LossApi.*
+  export ml.network.ActivationFuncApi.*
