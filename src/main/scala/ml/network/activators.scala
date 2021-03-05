@@ -35,7 +35,7 @@ object ActivationFuncApi:
     
     override val name = "sigmoid"  
 
-  def noActivation[T] = new ActivationFunc[T]:
+  def linear[T] = new ActivationFunc[T]:
     override def apply(x: Tensor[T]): Tensor[T] = x
     override def derivative(x: Tensor[T]): Tensor[T] = x
-    override val name = "no-activation"  
+    override val name = "linear"  

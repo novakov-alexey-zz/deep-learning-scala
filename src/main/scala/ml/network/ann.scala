@@ -10,20 +10,21 @@ import Sequential._
 
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
+import scala.util.Random
 
 sealed trait LayerCfg[T]:
   def units: Int
   def f: ActivationFunc[T]
 
 case class Dense[T](
-    f: ActivationFunc[T] = ActivationFuncApi.noActivation[T],
+    f: ActivationFunc[T] = ActivationFuncApi.linear[T],
     units: Int = 1
 ) extends LayerCfg[T]
 
 case class Layer[T](
     w: Tensor[T],
     b: Tensor[T],
-    f: ActivationFunc[T] = ActivationFuncApi.noActivation[T],
+    f: ActivationFunc[T] = ActivationFuncApi.linear[T],
     units: Int = 1,
     state: Option[OptimizerState[T]] = None
 ): 
@@ -38,11 +39,10 @@ case class Activation[T](x: Tensor[T], z: Tensor[T], a: Tensor[T])
 
 sealed trait Model[T]:
   def reset(): Model[T]
-  def train(x: Tensor[T], y: Tensor[T], epochs: Int): Model[T]
+  def train(x: Tensor[T], y: Tensor[T], epochs: Int, shuffle: Boolean = true): Model[T]
   def layers: List[Layer[T]]
   def predict(x: Tensor[T], customLayers: List[Layer[T]] = layers): Tensor[T]
-  def apply(x: Tensor[T], customLayers: List[Layer[T]] = layers): Tensor[T] = 
-    predict(x, customLayers)
+  def apply(x: Tensor[T], customLayers: List[Layer[T]] = layers): Tensor[T] = predict(x, customLayers)
   def history: TrainHistory[T]
   def metricValues: List[(Metric[T], List[Double])]
 
@@ -106,13 +106,12 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
     )
 
   private def trainEpoch(
-      batches: Array[(Array[Array[T]], Array[Array[T]])],
+      batches: Iterable[(Array[Array[T]], Array[Array[T]])],
       layers: List[Layer[T]],
       epoch: Int
-  ) =
-    val index = (1 to batches.length)
+  ) =    
     val (trained, losses, metricValue) =
-      batches.zip(index).foldLeft(layers, List.empty[T], List.fill(metrics.length)(0)) {
+      batches.zipWithIndex.foldLeft(layers, List.empty[T], List.fill(metrics.length)(0)) {
         case ((layers, batchLoss, epochMetrics), ((xBatch, yBatch), i)) =>
           // forward
           val activations = activate(xBatch.as2D, layers)
@@ -127,7 +126,7 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
             activations,
             error,
             optimizerCfg,
-            i * epoch
+            (i + 1) * epoch
           )
           val matches = metrics
             .map(_.matches(actual, predicted))
@@ -136,9 +135,10 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
       }    
     (trained, getAvgLoss(losses), metricValue)
 
-  def train(x: Tensor[T], y: Tensor[T], epochs: Int): Model[T] =
+  def train(x: Tensor[T], y: Tensor[T], epochs: Int, shuffle: Boolean = true): Model[T] =
     lazy val actualBatches = y.batches(batchSize).toArray
     lazy val batches = x.batches(batchSize).zip(actualBatches).toArray
+    def getBatches = if shuffle then Random.shuffle(batches) else batches.toIterable
     val inputs = x.cols
     val currentLayers = getOrInitLayers(inputs)
     val initialMetrics = metrics.map(_ -> List.empty[Double])
@@ -146,7 +146,7 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
     val (updatedLayers, lHistory, epochLosses, metricValues) =
       (1 to epochs).foldLeft(currentLayers, List.empty[List[Layer[T]]], List.empty[T], initialMetrics) {
         case ((layers, lHistory, losses, trainingMetrics), epoch) =>
-          val (trainedLayers, avgLoss, epochMatches) = trainEpoch(batches, layers, epoch)
+          val (trainedLayers, avgLoss, epochMatches) = trainEpoch(getBatches, layers, epoch)
           
           val (epochMetrics, epochMetricAvg) = updateMetrics(epochMatches, trainingMetrics, x.length)
           printMetrics(epoch, epochs, avgLoss, epochMetricAvg)          
