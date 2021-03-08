@@ -36,30 +36,34 @@ case class LabelEncoder[T: ClassTag: Ordering](
  */
 case class OneHotEncoder[
     T: Ordering: ClassTag,
-    U: Numeric: Ordering: ClassTag
+    U: Ordering: ClassTag
 ](
     classes: Map[T, U] = Map.empty[T, U],
     notFound: Int = -1
-):
+)(using n: Numeric[U]):
   def fit(samples: Tensor1D[T]): OneHotEncoder[T, U] =
     OneHotEncoder[T, U](toClasses[T, U](samples))
 
-  def transform(t: Tensor2D[T], col: Int): Tensor2D[T] =
-    lazy val num = summon[Numeric[U]]
+  def transform(t: Tensor1D[T]): Tensor2D[T] =
+    Tensor2D(t.data.map(encode))
+
+  private def encode(v: T) = 
+    val zero = castFromTo[Int, T](0)
+    val array = Array.fill[T](classes.size)(zero)
+    val pos = classes.get(v)
+    pos match
+      case Some(p) =>
+        array(n.toInt(p)) = castFromTo[U, T](n.one)
+      case None =>
+        array(0) = castFromTo[U, T](n.fromInt(notFound))
+    array
+
+  def transform(t: Tensor2D[T], col: Int): Tensor2D[T] =    
     val data = t.data.map { row =>
       row.zipWithIndex
-        .foldLeft(ArrayBuffer.empty[T]) { case (acc, (d, i)) =>
-          if i == col then
-            val zero = castFromTo[Int, T](0)
-            val array = Array.fill[T](classes.size)(zero)
-            val pos = classes.get(d)
-            pos match
-              case Some(p) =>
-                array(num.toInt(p)) = castFromTo[U, T](num.one)
-              case None =>
-                array(0) = castFromTo[U, T](num.fromInt(notFound))
-            acc ++ array
-          else acc :+ d
+        .foldLeft(ArrayBuffer.empty[T]) { case (acc, (v, i)) =>
+          if i == col then acc ++ encode(v)
+          else acc :+ v
         }
         .toArray[T]
     }

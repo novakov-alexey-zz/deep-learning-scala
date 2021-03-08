@@ -31,7 +31,7 @@ object LossApi:
         sys.error(s"Both tensors must be the same shape: ${t1.shape} != ${t2.shape}")
 
   private def mean[T: Numeric: ClassTag](count: Int, sum: T): Double =
-    1.0 / count * castFromTo[T, Double](sum)
+    castFromTo[T, Double](sum) / count
 
   def meanSquareError[T: ClassTag: Numeric] = new Loss[T]:
     def calc(a: T, b: T): T =      
@@ -59,8 +59,10 @@ object LossApi:
   
   def binaryCrossEntropy[T: ClassTag](using n: Numeric[T]) = new Loss[T]:
     def calc(y: T, yHat: T): T = 
+      val predicted = n.toDouble(yHat)
+      val actual = n.toDouble(y)
       castFromTo[Double, T](
-        n.toDouble(y) * math.log(1e-15 + n.toDouble(yHat)) + (1 - n.toDouble(y)) * math.log(1 - n.toDouble(yHat))
+        actual * math.log(1e-15 + predicted) + (1 - actual) * math.log(1 - predicted)
       ) 
 
     override def apply(

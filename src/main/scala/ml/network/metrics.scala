@@ -22,6 +22,9 @@ trait Metric[T]:
     average(actual.length, correct)
 
 object MetricApi:
+  // def argMax[T: ClassTag](t: Tensor2D[T])(using n: Numeric[T]) =
+  //   Tensor1D(t.data.map { row => n.fromInt(row.indices.maxBy(row))} )
+
   def predictedToBinary[T](v: T)(using n: Numeric[T]): T =
     if n.toDouble(v) > 0.5 then n.one else n.zero
 
@@ -33,4 +36,4 @@ object MetricApi:
         predicted: Tensor[T]
     ): Int =      
         val predictedNormalized = predicted.map(predictedToBinary)
-        actual.equalRows(predictedNormalized)      
+        actual.equalRows(predictedNormalized)

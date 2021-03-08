@@ -4,6 +4,7 @@ import ml.tensors.api._
 import ml.transformation.castFromTo
 
 import scala.reflect.ClassTag
+import scala.collection.mutable.ArrayBuffer
 import math.Numeric.Implicits.infixNumericOps
 import math.Ordering.Implicits.infixOrderingOps
 import math.Fractional.Implicits.infixFractionalOps
@@ -28,6 +29,10 @@ private trait genOps:
     def sqr: Tensor[T] = TensorOps.pow(t, 2)    
     def sqrt: Tensor[T] = TensorOps.sqrt(t)
     def zero: Tensor[T] = TensorOps.zero(t)
+    def argMax: Tensor[T] = TensorOps.argMax(t)
+    def outer(that: Tensor[T]) = TensorOps.outer(t, that)
+    def flatten: Tensor[T] = TensorOps.flatten(t)
+    def diag: Tensor[T] = TensorOps.diag(t)
 
   extension [T: ClassTag: Fractional](t: Tensor[T])
     def /(that: Tensor[T]): Tensor[T] = TensorOps.div(t, that)
@@ -36,6 +41,7 @@ private trait genOps:
   extension [T: ClassTag](t: Tensor[T])
     def T: Tensor[T] = TensorOps.transpose(t)    
     def map[U: ClassTag](f: T => U): Tensor[U] = TensorOps.map[T, U](t, f)          
+    def mapRow[U: ClassTag](f: Array[T] => Array[U]): Tensor[U] = TensorOps.mapRow[T, U](t, f)          
 
 object ops extends genOps:
   extension [T: ClassTag](t: Tensor2D[T])
@@ -59,9 +65,9 @@ object ops extends genOps:
   implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T):
     // dot product
     def *(that: Tensor[T]): Tensor[T] = TensorOps.mul(Tensor0D(t), that)
-    def -(that: Tensor[T]): Tensor[T] = TensorOps.subtract(Tensor0D(t), that)    
+    //def -(that: Tensor[T]): Tensor[T] = TensorOps.subtract(Tensor0D(t), that)    
   
-  extension [T: ClassTag: Numeric](t: Array[Tensor[T]]) 
+  extension [T: ClassTag: Numeric](t: Array[Tensor[T]])
     def combineAllAs1D: Tensor1D[T] = TensorOps.combineAllAs1D(t)  
   
   extension [T: ClassTag: Numeric](a: Array[T])
@@ -116,7 +122,8 @@ object TensorOps:
         Tensor1D(data.map(_ - data2))
       case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) =>
         matrixSubstractVector(t1, t2)
-      case (t1, t2) => sys.error(s"Not implemented for\n$t1 and\n$t2")
+      case (t1, t2) => 
+        sys.error(s"Not implemented for\n$t1 and\n$t2")
 
   private def matrixSubstractVector[T: Numeric: ClassTag](
       matrix: Tensor2D[T],
@@ -193,6 +200,12 @@ object TensorOps:
       case Tensor0D(data) => Tensor0D(f(data))
       case Tensor1D(data) => Tensor1D(data.map(f))
       case Tensor2D(data) => Tensor2D(data.map(_.map(f)))
+  
+  def mapRow[T: ClassTag, U: ClassTag](t: Tensor[T], f: Array[T] => Array[U]): Tensor[U] =
+    t match
+      case Tensor0D(data) => Tensor0D(f(Array(data)).head)
+      case Tensor1D(data) => Tensor1D(f(data))
+      case Tensor2D(data) => Tensor2D(data.map(f))
   
   private def map2[T: ClassTag, U: ClassTag](a: Array[T], b: Array[T], f: (T, T) => U): Array[U] = 
     val res = Array.ofDim[U](a.length)
@@ -365,10 +378,10 @@ object TensorOps:
   def equalRows[T: ClassTag](t1: Tensor[T], t2: Tensor[T]): Int = 
     assert(t1.shape == t2.shape, sys.error(s"Tensors must be the same dimension: ${t1.shape} != ${t2.shape}"))
     (t1, t2) match
-      case (Tensor0D(data), Tensor0D(data2)) => 
+      case (Tensor0D(data), Tensor0D(data2)) =>         
         if data == data2 then 1 else 0
       case (Tensor1D(data), Tensor1D(data2)) => 
-        data.zip(data2).foldLeft(0) { case (acc, (a, b)) => if a == b then acc + 1 else acc }
+        data.zip(data2).count(_ == _)        
       case (Tensor2D(data), Tensor2D(data2)) => 
         data.zip(data2).foldLeft(0) { case (acc, (a, b)) => if a.sameElements(b) then acc + 1 else acc }
       case _ => 
@@ -444,3 +457,51 @@ object TensorOps:
     val from = if l < 0 then data.length + l else l
     val to = if r < 0 then data.length + r else if r == 0 then data.length else r
     data.slice(from, to)
+
+  def argMax[T: ClassTag](t: Tensor[T])(using n: Numeric[T]) =
+    def maxIndex(a: Array[T]) = n.fromInt(a.indices.maxBy(a))
+    t match
+      case Tensor2D(data) => Tensor1D(data.map(maxIndex))
+      case Tensor1D(data) => Tensor0D(maxIndex(data))
+      case Tensor0D(_) => t
+
+  def outer[T: ClassTag: Numeric](t1: Tensor[T], t2: Tensor[T]): Tensor[T] =
+    def product(a: Array[T], b: Array[T]) =
+      val res = Array.ofDim(a.length, b.length)
+      for i <- 0 until a.length do
+        for j <- 0 until b.length do
+          res(i)(j) = a(i) * b(j)
+      res
+
+    (t1, t2) match
+      case (Tensor0D(d), Tensor0D(d2)) => Tensor0D(d * d2)
+      case (Tensor0D(d), _) => scalarMul(t2, d)  
+      case (Tensor1D(d), Tensor0D(d2)) => scalarMul(t1, d2)
+      case (Tensor1D(d), Tensor1D(d2)) => Tensor2D(product(d, d2))
+      case (Tensor1D(d), Tensor2D(d2)) => Tensor2D(product(d, d2.flatten))
+      case (Tensor2D(d), Tensor0D(d2)) => scalarMul(t1, d2)
+      case (Tensor2D(d), Tensor1D(d2)) => Tensor2D(product(d.flatten, d2))
+      case (Tensor2D(d), Tensor2D(d2)) => Tensor2D(product(d.flatten, d2.flatten))
+
+  def flatten[T: ClassTag](t: Tensor[T]): Tensor[T] = 
+    t match
+      case Tensor0D(_) => t
+      case Tensor1D(_) => t
+      case Tensor2D(data) => Tensor1D(data.flatten)
+  
+  def diag[T: ClassTag](t: Tensor[T])(using n: Numeric[T]): Tensor[T] =
+    t match
+      case Tensor0D(_) => t
+      case Tensor1D(d) => 
+        val res = Array.ofDim(d.length, d.length)
+        for i <- 0 until d.length do
+          for j <- 0 until d.length do
+            res(i)(j) = if i == j then d(i) else n.zero
+        Tensor2D(res)
+      case t2 @ Tensor2D(d) =>
+        val size = t2.shape.min
+        val res = Array.ofDim(size)
+        for i <- 0 until size do
+          for j <- 0 until size if i == j do
+            res(i) = d(i)(j)
+        Tensor1D(res)

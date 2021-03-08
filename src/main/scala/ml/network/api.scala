@@ -13,5 +13,6 @@ object api:
   export ml.network.Sequential
   export ml.network.GradientClippingApi.*
   export ml.network.MetricApi.*
+  export ml.network.Metric
   export ml.network.LossApi.*
   export ml.network.ActivationFuncApi.*
