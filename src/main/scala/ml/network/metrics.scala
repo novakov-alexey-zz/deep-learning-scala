@@ -14,17 +14,14 @@ trait Metric[T]:
       predicted: Tensor[T]
   ): Int
 
-  def average(count: Int, correct: Int): Double =
+  def average(count: Int, correct: Int): Double =    
     correct.toDouble / count
 
   def apply(actual: Tensor[T], predicted: Tensor[T]): Double =
     val correct = matches(actual, predicted)
     average(actual.length, correct)
 
-object MetricApi:
-  // def argMax[T: ClassTag](t: Tensor2D[T])(using n: Numeric[T]) =
-  //   Tensor1D(t.data.map { row => n.fromInt(row.indices.maxBy(row))} )
-
+object MetricApi:  
   def predictedToBinary[T](v: T)(using n: Numeric[T]): T =
     if n.toDouble(v) > 0.5 then n.one else n.zero
 
@@ -35,5 +32,5 @@ object MetricApi:
         actual: Tensor[T],
         predicted: Tensor[T]
     ): Int =      
-        val predictedNormalized = predicted.map(predictedToBinary)
-        actual.equalRows(predictedNormalized)
+        val predictedBinary = predicted.map(predictedToBinary)
+        actual.equalRows(predictedBinary)

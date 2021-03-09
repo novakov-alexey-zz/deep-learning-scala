@@ -45,7 +45,8 @@ extension [T: ClassTag: Numeric](a: NDArray[T])
     NDArray[T](reshaped(newShape.tail), newShape)      
 
 
-@main def test =  
+// @main 
+def test =  
   val ones = NDArray.ones[Int](16)
   println(ones)  
   println(ones.reshape(2, 2, 2, 2))

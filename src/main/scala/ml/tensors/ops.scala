@@ -33,7 +33,9 @@ private trait genOps:
     def outer(that: Tensor[T]) = TensorOps.outer(t, that)
     def flatten: Tensor[T] = TensorOps.flatten(t)
     def diag: Tensor[T] = TensorOps.diag(t)
-
+    def sumRows: Tensor[T] = TensorOps.sumRows(t)    
+    def sumCols: Tensor[T] = TensorOps.sumCols(t)    
+ 
   extension [T: ClassTag: Fractional](t: Tensor[T])
     def /(that: Tensor[T]): Tensor[T] = TensorOps.div(t, that)
     def :/(that: T): Tensor[T] = TensorOps.div(t, Tensor0D(that))
@@ -65,7 +67,7 @@ object ops extends genOps:
   implicit class Tensor0DOps[T: ClassTag: Numeric](val t: T):
     // dot product
     def *(that: Tensor[T]): Tensor[T] = TensorOps.mul(Tensor0D(t), that)
-    //def -(that: Tensor[T]): Tensor[T] = TensorOps.subtract(Tensor0D(t), that)    
+    def -(that: Tensor[T]): Tensor[T] = TensorOps.subtract(Tensor0D(t), that)    
   
   extension [T: ClassTag: Numeric](t: Array[Tensor[T]])
     def combineAllAs1D: Tensor1D[T] = TensorOps.combineAllAs1D(t)  
@@ -118,6 +120,8 @@ object TensorOps:
         Tensor2D(res)
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ - data2)))
+      case (Tensor0D(data), Tensor2D(data2)) =>
+        Tensor2D(data2.map(_.map(v => data - v)))
       case (Tensor1D(data), Tensor0D(data2)) =>
         Tensor1D(data.map(_ - data2))
       case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) =>
@@ -185,11 +189,11 @@ object TensorOps:
       case (t, Tensor0D(data)) =>
         scalarMul(t, data)
       case (Tensor1D(data), Tensor2D(data2)) =>
-        Tensor2D(matMul(asColumn(data), data2))
+        Tensor2D(matMul(Array(data), data2))
       case (Tensor2D(data), Tensor1D(data2)) =>
         Tensor2D(matMul(data, asColumn(data2)))
       case (Tensor1D(data), Tensor1D(data2)) =>
-        Tensor1D(matMul(asColumn(data), Array(data2)).head)
+        Tensor0D(matMul(Array(data), asColumn(data2)).head.head)
       case (Tensor2D(data), Tensor2D(data2)) =>
         Tensor2D(matMul(data, data2))
 
@@ -303,6 +307,19 @@ object TensorOps:
       case Tensor0D(data) => data
       case Tensor1D(data) => data.sum
       case Tensor2D(data) => data.map(_.sum).sum
+  
+  def sumRows[T: Numeric: ClassTag](t: Tensor[T]): Tensor[T] =
+    t match
+      case Tensor0D(_) => t
+      case Tensor1D(_) => t
+      case Tensor2D(data) => 
+        Tensor1D(data.reduce((a, b) => a.lazyZip(b).map(_ + _).toArray))
+  
+  def sumCols[T: Numeric: ClassTag](t: Tensor[T]): Tensor[T] =
+    t match
+      case Tensor0D(_) => t
+      case Tensor1D(data) => Tensor0D(data.sum)
+      case Tensor2D(data) => Tensor2D(data.map(a => Array(a.sum)))
 
   def transpose[T: ClassTag](t: Tensor[T]): Tensor[T] =
     t match
@@ -376,7 +393,7 @@ object TensorOps:
       case Tensor0D(data) => Iterator(Array(Array(data)))
 
   def equalRows[T: ClassTag](t1: Tensor[T], t2: Tensor[T]): Int = 
-    assert(t1.shape == t2.shape, sys.error(s"Tensors must be the same dimension: ${t1.shape} != ${t2.shape}"))
+    assert(t1.shape == t2.shape, sys.error(s"Tensors must have the same shape: ${t1.shape} != ${t2.shape}"))
     (t1, t2) match
       case (Tensor0D(data), Tensor0D(data2)) =>         
         if data == data2 then 1 else 0
@@ -459,7 +476,9 @@ object TensorOps:
     data.slice(from, to)
 
   def argMax[T: ClassTag](t: Tensor[T])(using n: Numeric[T]) =
-    def maxIndex(a: Array[T]) = n.fromInt(a.indices.maxBy(a))
+    def maxIndex(a: Array[T]) = 
+      n.fromInt(a.indices.maxBy(a))
+
     t match
       case Tensor2D(data) => Tensor1D(data.map(maxIndex))
       case Tensor1D(data) => Tensor0D(maxIndex(data))

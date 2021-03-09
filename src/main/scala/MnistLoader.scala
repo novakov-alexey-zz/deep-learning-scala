@@ -51,8 +51,8 @@ object MnistLoader:
     // println(s"number of labels: $numberOfLabels")
 
     assert(numberOfItems == numberOfLabels)
-
-    val labelsTensor = labelInputStream.readAllBytes.map(l => n.fromInt(l)).take(2).as1D
+    val samples = 60_000
+    val labelsTensor = labelInputStream.readAllBytes.map(l => n.fromInt(l)).take(samples).as1D
     val singeImageSize = nRows * nCols
     val imageArray = ArrayBuffer.empty[Array[T]]
 
@@ -61,4 +61,4 @@ object MnistLoader:
         .map(_ => n.fromInt(imageInputStream.readUnsignedByte())).toArray      
       imageArray += image
 
-    (imageArray.toArray.take(2).as2D, labelsTensor)
+    (imageArray.toArray.take(samples).as2D, labelsTensor)

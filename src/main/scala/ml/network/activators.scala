@@ -36,29 +36,35 @@ object ActivationFuncApi:
     override val name = "sigmoid"  
 
   def softmax[T: ClassTag: Ordering](using n: Fractional[T]) = new ActivationFunc[T]:
-    // stable, using "- max"
-    override def apply(x: Tensor[T]): Tensor[T] = 
-      // println(x)
+    
+    override def apply(x: Tensor[T]): Tensor[T] =       
       val applied = x.mapRow { row =>
-        val max = row.max
-        // println(s"max = $max")
-        val norm = row.map(v => castFromTo[Double, T](math.exp(n.toDouble(n.minus(v, max))))) 
-        // println(s"norm = ${norm.mkString(",")}")
-        val sum = norm.sum
-        // println(s"sum = $sum")
-        norm.map(v => n.div(v, sum))
+        val max = row.max        
+        val expNorm = row.map(v => castFromTo[Double, T](math.exp(n.toDouble(n.minus(v, max)))))         
+        val sum = expNorm.sum        
+        expNorm.map(v => n.div(v, sum))
       }
-      //println(applied)
-      applied
       
-    override def derivative(x: Tensor[T]): Tensor[T] = 
-      val sm = apply(x)
-      println("sm:\n" + sm)
-      println("diag:\n" + sm.flatten.diag)
-      println(s"outer:\n" + sm.outer(sm))
-      val d = sm.flatten.diag - sm.outer(sm)
-      println("d:\n" + d)
-      x
+      val appliedSum = applied.sumCols
+        .map(v => castFromTo[Double, T](if n.toDouble(v).abs - 0.4E-15d > 1d then n.toDouble(v) else 1d))      
+      val totalSum = appliedSum.sumRows.as0D.data      
+      assert(totalSum == x.length, 
+        s"Softmax distribution sum is not equal to 1 at some activation, but\n${appliedSum}")
+      applied
+          
+    override def derivative(x: Tensor[T]): Tensor[T] =       
+      val sm = apply(x)      
+      sm multiply (n.one - sm)
+
+    // override def derivative(x: Tensor[T]): Tensor[T] = 
+      // println(s"derivative x:\n$x")
+    //   val sm = apply(x)
+    //   sm.mapRow { row =>
+    //     val t = Tensor1D(row)        
+    //     val dxDs = t.diag - (t * t)
+    //     dxDs.sumRows.as1D.data                
+    //   }      
+      
     override val name = "softmax"  
   
   def linear[T] = new ActivationFunc[T]:
