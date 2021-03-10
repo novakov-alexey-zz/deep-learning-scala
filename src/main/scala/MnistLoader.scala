@@ -9,6 +9,7 @@ import java.nio.{ByteBuffer, ByteOrder}
 import java.nio.file.{Files, Path, Paths}
 import java.util.zip.GZIPInputStream
 
+// data to be taken from http://yann.lecun.com/exdb/mnist/
 object MnistLoader:
   val trainImagesFilename = "train-images-idx3-ubyte.gz"
   val trainLabelsFilename = "train-labels-idx1-ubyte.gz"
@@ -22,14 +23,14 @@ object MnistLoader:
     testLabels: Tensor[T]
   )
 
-  def loadData[T: Numeric: ClassTag](mnistDir: String): MnistDataset[T] =     
+  def loadData[T: Numeric: ClassTag](mnistDir: String, samples: Int = 60_000): MnistDataset[T] =     
     val (trainImages, trainLabels) = loadDataset(
-        Path.of(mnistDir, trainImagesFilename), Path.of(mnistDir, trainLabelsFilename))
+        Path.of(mnistDir, trainImagesFilename), Path.of(mnistDir, trainLabelsFilename), samples)
     val (testImages, testLabels) = loadDataset(
-        Path.of(mnistDir, testImagesFilename), Path.of(mnistDir, testLabelsFilename))
+        Path.of(mnistDir, testImagesFilename), Path.of(mnistDir, testLabelsFilename), samples)
     MnistDataset(trainImages, trainLabels, testImages, testLabels)
   
-  private def loadDataset[T: ClassTag](images: Path, labels: Path)(using n: Numeric[T]): (Tensor[T], Tensor[T]) =
+  private def loadDataset[T: ClassTag](images: Path, labels: Path, samples: Int)(using n: Numeric[T]): (Tensor[T], Tensor[T]) =
     val imageStream = new GZIPInputStream(Files.newInputStream(images))
     val imageInputStream = new DataInputStream(new BufferedInputStream(imageStream))
     val magicNumber = imageInputStream.readInt()
@@ -51,7 +52,7 @@ object MnistLoader:
     // println(s"number of labels: $numberOfLabels")
 
     assert(numberOfItems == numberOfLabels)
-    val samples = 60_000
+    
     val labelsTensor = labelInputStream.readAllBytes.map(l => n.fromInt(l)).take(samples).as1D
     val singeImageSize = nRows * nCols
     val imageArray = ArrayBuffer.empty[Array[T]]

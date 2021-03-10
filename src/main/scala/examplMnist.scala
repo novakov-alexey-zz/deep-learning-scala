@@ -12,7 +12,7 @@ import scala.reflect.ClassTag
 @main def MNIST() =
   val dataset = MnistLoader.loadData[Double]("images")  
 
-  def accuracyMnist[T: ClassTag: Ordering](using n: Fractional[T]) = new Metric[T]:
+  def accuracyMnist[T: ClassTag: Ordering](using n: Numeric[T]) = new Metric[T]:
     val name = "accuracy"
     
     def matches(actual: Tensor[T], predicted: Tensor[T]): Int =      
@@ -24,10 +24,11 @@ import scala.reflect.ClassTag
     crossEntropy,
     learningRate = 0.001,
     metrics = List(accuracy),
-    batchSize = 64,
+    batchSize = 128,
     gradientClipping = clipByValue(5.0d)
   )
     .add(Dense(relu, 24))    
+    .add(Dense(relu, 16))    
     .add(Dense(softmax, 10))
   
   val encoder = OneHotEncoder(classes = 
@@ -52,8 +53,8 @@ import scala.reflect.ClassTag
   val imageMap = singleTestImage.grouped(28)
     .map(_.map(s => f"${s.toInt}%4s").mkString).mkString("\n")
   println(imageMap)
-  val label = dataset.testLabels.as1D.data.head
-  println(label)
-  val predicted = model(singleTestImage.as2D)
-  assert(label == predicted.as0D.data, 
-    s"Predicted number is not equal to expected test number, but was ${predicted.as0D.data}")
+  val label = dataset.testLabels.as1D.data.head  
+  val predicted = model(singleTestImage.as2D).argMax.as0D.data  
+  println(s"predicted = $predicted")
+  assert(label == predicted, 
+    s"Predicted label is not equal to expected '$label' label, but was '$predicted'")
