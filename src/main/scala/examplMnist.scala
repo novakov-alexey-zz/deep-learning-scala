@@ -10,13 +10,7 @@ import java.nio.file.Path
 import scala.reflect.ClassTag
 
 @main def MNIST() =
-  val dataset = MnistLoader.loadData[Double]("images")
-//   val image1 = dataset.trainImage.as2D.data.tail.head
-
-//   println(image1.grouped(28).map(_.foldLeft(""){ (acc, s) =>
-//     acc + f"${s.toInt}%4s"
-//   }).mkString("\n"))
-  //println(dataset.trainLabels.as1D.data.take(10).mkString(","))
+  val dataset = MnistLoader.loadData[Double]("images")  
 
   def accuracyMnist[T: ClassTag: Ordering](using n: Fractional[T]) = new Metric[T]:
     val name = "accuracy"
@@ -25,10 +19,11 @@ import scala.reflect.ClassTag
       val predictedArgMax = predicted.argMax      
       actual.argMax.equalRows(predictedArgMax)
       
+  val accuracy = accuracyMnist[Double]    
   val ann = Sequential[Double, Adam, HeNormal](
     crossEntropy,
     learningRate = 0.001,
-    metrics = List(accuracyMnist),
+    metrics = List(accuracy),
     batchSize = 64,
     gradientClipping = clipByValue(5.0d)
   )
@@ -39,7 +34,26 @@ import scala.reflect.ClassTag
     (0 to 9).zipWithIndex.toMap.map((k, v) => (k.toDouble, v.toDouble))
   )  
 
-  val yTrain = encoder.transform(dataset.trainLabels.as1D)
-  val xTrain = dataset.trainImage.map(_ / 255d) // normalize to [0,1] range
-  
-  val model = ann.train(xTrain, yTrain, epochs = 20, shuffle = true)
+  def prepareData(x: Tensor[Double], y: Tensor[Double]) =
+    val xData = x.map(_ / 255d) // normalize to [0,1] range
+    val yData = encoder.transform(y.as1D)
+    (xData, yData) 
+
+  val (xTrain, yTrain) = prepareData(dataset.trainImage, dataset.trainLabels)
+  val model = ann.train(xTrain, yTrain, epochs = 10, shuffle = true)
+
+  val (xTest, yTest) = prepareData(dataset.testImages, dataset.testLabels)
+  val testPredicted = model(xTest)
+  val value = accuracy(yTest, testPredicted)
+  println(s"test accuracy = $value")  
+
+  // Single Test
+  val singleTestImage = dataset.testImages.as2D.data.head
+  val imageMap = singleTestImage.grouped(28)
+    .map(_.map(s => f"${s.toInt}%4s").mkString).mkString("\n")
+  println(imageMap)
+  val label = dataset.testLabels.as1D.data.head
+  println(label)
+  val predicted = model(singleTestImage.as2D)
+  assert(label == predicted.as0D.data, 
+    s"Predicted number is not equal to expected test number, but was ${predicted.as0D.data}")

@@ -74,6 +74,7 @@ object ops extends genOps:
   
   extension [T: ClassTag: Numeric](a: Array[T])
     def as1D: Tensor1D[T] = Tensor1D(a)
+    def as2D: Tensor2D[T] = Tensor2D(a)
   
   extension [T: ClassTag: Numeric](a: Array[Array[T]])
     def as2D: Tensor2D[T] = Tensor2D(a)

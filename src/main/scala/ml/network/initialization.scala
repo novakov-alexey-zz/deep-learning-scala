@@ -2,7 +2,6 @@ package ml.network
 
 import ml.transformation.castFromTo
 import ml.tensors.api._
-import ml.tensors.ops._
 
 import scala.reflect.ClassTag
 
