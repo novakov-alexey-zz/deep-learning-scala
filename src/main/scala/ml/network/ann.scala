@@ -1,6 +1,5 @@
 package ml.network 
 
-import ml.network.RandomGen._
 import ml.transformation.castFromTo
 import ml.tensors.api._
 import ml.tensors.ops._
@@ -69,7 +68,7 @@ case class TrainHistory[T](layers: List[List[Layer[T]]] = Nil, losses: List[T] =
 
 type MetricValues[T] = List[(Metric[T], List[Double])]
 
-case class Sequential[T: ClassTag: RandomGen: Fractional, U](
+case class Sequential[T: ClassTag: Fractional, U, V](
     lossFunc: Loss[T],    
     learningRate: T,
     metrics: List[Metric[T]] = Nil,
@@ -80,7 +79,7 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
     metricValues: MetricValues[T] = Nil,
     gradientClipping: GradientClipping[T] = GradientClippingApi.noClipping[T],
     cfg: Option[OptimizerCfg[T]] = None
-)(using optimizer: Optimizer[U]) extends Model[T]:
+)(using optimizer: Optimizer[U], initializer: ParamsInitializer[T, V]) extends Model[T]:
 
   private val optimizerCfg = 
     cfg.getOrElse(OptimizerCfg(learningRate = learningRate, gradientClipping, AdamCfg.default))
@@ -95,12 +94,12 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
     val predicted = predict(x, w)    
     lossFunc(y, predicted)  
 
-  def add(layer: LayerCfg[T]): Sequential[T, U] =
+  def add(layer: LayerCfg[T]): Sequential[T, U, V] =
     copy(layerStack = (inputs) => 
       val currentLayers = layerStack(inputs)
       val prevInput = currentLayers.lastOption.map(_.units).getOrElse(inputs)
-      val w = random2D(prevInput, layer.units)
-      val b = zeros(layer.units)
+      val w = initializer.weights(prevInput, layer.units)
+      val b = initializer.biases(layer.units)
       val optimizerState = optimizer.initState(w, b)
       (currentLayers :+ Layer(w, b, layer.f, layer.units, optimizerState))
     )
@@ -116,7 +115,7 @@ case class Sequential[T: ClassTag: RandomGen: Fractional, U](
           // forward
           val activations = activate(xBatch.as2D, layers)
           val actual = yBatch.as2D          
-          val predicted = activations.last.a          
+          val predicted = activations.last.a
           val error = predicted - actual          
           val loss = lossFunc(actual, predicted)
 

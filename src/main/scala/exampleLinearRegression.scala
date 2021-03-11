@@ -2,6 +2,7 @@ import ml.network.api._
 import ml.network.api.given
 import ml.tensors.api._
 import ml.tensors.ops._
+import ml.network.inits.given
 
 import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
@@ -29,7 +30,7 @@ import java.io.{File,PrintWriter}
   
   val alg = "adam"
 
-  val ann = Sequential[Double, Adam](
+  val ann = Sequential[Double, Adam, RandomUniform](
     meanSquareError,
     learningRate = 0.0012f,    
     batchSize = 16,

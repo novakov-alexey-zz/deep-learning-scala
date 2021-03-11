@@ -4,6 +4,7 @@ import ml.tensors.api._
 import ml.tensors.ops._
 import ml.network.api._
 import ml.network.api.given
+import ml.network.inits.given
 
 import java.nio.file.Path
 import java.io.{File, PrintWriter}
@@ -26,7 +27,7 @@ import scala.util.Using
   
   val accuracy = accuracyBinaryClassification[Double]
   
-  val ann = Sequential[Double, Adam](
+  val ann = Sequential[Double, Adam, RandomUniform](
     binaryCrossEntropy,
     learningRate = 0.002d,
     metrics = List(accuracy),
