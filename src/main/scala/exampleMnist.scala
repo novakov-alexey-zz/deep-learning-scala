@@ -27,13 +27,11 @@ import scala.reflect.ClassTag
     batchSize = 128,
     gradientClipping = clipByValue(5.0d)
   )
-    .add(Dense(relu, 24))    
-    .add(Dense(relu, 16))    
+    .add(Dense(relu, 100))      
     .add(Dense(softmax, 10))
   
-  val encoder = OneHotEncoder(classes = 
-    (0 to 9).zipWithIndex.toMap.map((k, v) => (k.toDouble, v.toDouble))
-  )  
+  val encoder = OneHotEncoder(
+    classes = (0 to 9).map(i => (i.toDouble, i.toDouble)).toMap)  
 
   def prepareData(x: Tensor[Double], y: Tensor[Double]) =
     val xData = x.map(_ / 255d) // normalize to [0,1] range

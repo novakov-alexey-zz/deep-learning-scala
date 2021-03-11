@@ -4,6 +4,7 @@ import ml.transformation.castFromTo
 import ml.tensors.api._
 
 import scala.reflect.ClassTag
+import java.util.Random
 
 trait ParamsInitializer[A, B]:  
 
@@ -31,7 +32,7 @@ object inits:
       zeros(length)
 
   given [T: ClassTag: Numeric]: ParamsInitializer[T, HeNormal] with    
-    val rnd = new java.util.Random() 
+    val rnd = new Random() 
 
     def gen(lenght: Int): T = 
       castFromTo[Double, T]{

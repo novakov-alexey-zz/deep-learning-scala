@@ -3,6 +3,7 @@ package ml.network
 import ml.transformation.castFromTo
 import ml.tensors.api._
 import ml.tensors.ops._
+import ml.math.generic._
 
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
@@ -33,9 +34,9 @@ object LossApi:
   private def mean[T: Numeric: ClassTag](count: Int, sum: T): Double =
     castFromTo[T, Double](sum) / count
 
-  def meanSquareError[T: ClassTag: Numeric] = new Loss[T]:
-    def calc(a: T, b: T): T =      
-      castFromTo[Double, T](math.pow(castFromTo[T, Double](a - b), 2)) 
+  def meanSquareError[T: ClassTag](using n: Numeric[T]) = new Loss[T]:
+    def calc(a: T, b: T): T =
+      pow(a - b, n.fromInt(2))
 
     override def apply(
         actual: Tensor[T],
@@ -45,9 +46,9 @@ object LossApi:
       val meanSumScore = mean(count, sumScore)
       castFromTo(meanSumScore) 
 
-  def crossEntropy[T: ClassTag](using n: Numeric[T]) = new Loss[T]:
+  def crossEntropy[T: ClassTag: Numeric] = new Loss[T]:
     def calc(y: T, yHat: T): T = 
-      castFromTo[Double, T](n.toDouble(y) * math.log(1e-15 + n.toDouble(yHat))) 
+      y * log(yHat)
 
     override def apply(
         actual: Tensor[T],
@@ -58,13 +59,9 @@ object LossApi:
       castFromTo(-meanSumScore)
   
   def binaryCrossEntropy[T: ClassTag](using n: Numeric[T]) = new Loss[T]:
-    def calc(y: T, yHat: T): T = 
-      val predicted = n.toDouble(yHat)
-      val actual = n.toDouble(y)
-      castFromTo[Double, T](
-        actual * math.log(1e-15 + predicted) + (1 - actual) * math.log(1 - predicted)
-      ) 
-
+    def calc(y: T, yHat: T): T =      
+      y * log(yHat) + (n.one - y) * log(n.one - yHat)
+       
     override def apply(
         actual: Tensor[T],
         predicted: Tensor[T]
