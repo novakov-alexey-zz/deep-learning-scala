@@ -69,9 +69,6 @@ object ops extends genOps:
     def *(that: Tensor[T]): Tensor[T] = TensorOps.mul(Tensor0D(t), that)
     def -(that: Tensor[T]): Tensor[T] = TensorOps.subtract(Tensor0D(t), that)    
   
-  extension [T: ClassTag: Numeric](t: Array[Tensor[T]])
-    def combineAllAs1D: Tensor1D[T] = TensorOps.combineAllAs1D(t)  
-  
   extension [T: ClassTag: Numeric](a: Array[T])
     def as1D: Tensor1D[T] = Tensor1D(a)
     def as2D: Tensor2D[T] = Tensor2D(a)
@@ -85,9 +82,6 @@ object ops extends genOps:
           rows: Option[(Int, Int)] = None,
           cols: Option[(Int, Int)] = None
       ): Array[Array[T]] = TensorOps.slice(a, rows, cols)
-
-  extension [T: ClassTag: Numeric](t: List[Tensor[T]])
-    def combineAllAs1D: Tensor1D[T] = TensorOps.combineAllAs1D(t)
 
   extension [T: ClassTag: Numeric](pair: (Tensor[T], Tensor[T]))
     def map2[U: ClassTag: Numeric](f: (T, T) => U): Tensor[U] = 
@@ -148,13 +142,24 @@ object TensorOps:
   def plus[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match
       case (Tensor1D(data), Tensor1D(data2)) =>
-        checkShapeEquality(a, b)
-        Tensor1D(data.zip(data2).map {(a, b) => a + b })
+        checkShapeEquality(a, b)        
+        val res = Array.ofDim(data.length)
+        for i <- 0 until data.length do 
+          res(i) = data(i) + data2(i) 
+        Tensor1D(res)
+
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ + data2)))
-      case (Tensor2D(data), Tensor2D(data2)) =>
-        checkShapeEquality(a, b)
-        Tensor2D(data.zip(data2).map((a, b) => a.zip(b).map(_ + _)))
+
+      case (t1 @ Tensor2D(data), Tensor2D(data2)) =>
+        checkShapeEquality(a, b)        
+        val (rows, cols) = t1.shape2D
+        val res = Array.ofDim(rows, cols)
+        for i <- 0 until rows do
+          for j <- 0 until cols do
+            res(i)(j) = data(i)(j) + data2(i)(j)
+        Tensor2D(res)
+
       case (Tensor0D(data), Tensor2D(data2)) =>
         Tensor2D(data2.map(_.map(_ + data)))
       case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) =>
@@ -263,27 +268,6 @@ object TensorOps:
           sum = sum + (a(i)(k) * b(k)(j))
         res(i)(j) = sum    
     res
-
-  def combineAll[T: ClassTag](ts: List[Tensor1D[T]]): Tensor1D[T] =
-    ts.reduce[Tensor1D[T]] { case (a, b) => TensorOps.combine(a, b) }
-
-  def combine[T: ClassTag](a: Tensor1D[T], b: Tensor1D[T]): Tensor1D[T] =
-    Tensor1D(a.data ++ b.data)
-
-  def combineAllAs1D[T: ClassTag](ts: Iterable[Tensor[T]]): Tensor1D[T] =
-    ts.foldLeft(Tensor1D[T]()) { case (a, b) => combineAs1D[T](a, b) }
-
-  def combineAs1D[T: ClassTag](a: Tensor[T], b: Tensor[T]): Tensor1D[T] =
-    (a, b) match
-      case (Tensor1D(data), Tensor0D(data2))    => Tensor1D(data :+ data2)
-      case (Tensor0D(data), Tensor0D(data2))    => Tensor1D(Array(data, data2))
-      case (Tensor0D(data), Tensor1D(data2))    => Tensor1D(data +: data2)
-      case (Tensor0D(data), Tensor2D(data2))    => Tensor1D(data +: data2.flatten)
-      case (t1 @ Tensor1D(_), t2 @ Tensor1D(_)) => combine(t1, t2)
-      case (t1 @ Tensor1D(_), Tensor2D(data2))  => combine(t1, Tensor1D(data2.flatten))
-      case (Tensor2D(data), Tensor0D(data2))    => Tensor1D(data.flatten :+ data2)
-      case (Tensor2D(data), t2 @ Tensor1D(_))   => combine(Tensor1D(data.flatten), t2)
-      case (Tensor2D(data), Tensor2D(data2))    =>  combine(Tensor1D(data.flatten), Tensor1D(data2.flatten))
 
   def as0D[T: ClassTag](t: Tensor[T]): Tensor0D[T] =
     t match
