@@ -43,7 +43,7 @@ sealed trait Model[T]:
   def predict(x: Tensor[T], customLayers: List[Layer[T]] = layers): Tensor[T]
   def apply(x: Tensor[T], customLayers: List[Layer[T]] = layers): Tensor[T] = predict(x, customLayers)
   def history: TrainHistory[T]
-  def metricValues: List[(Metric[T], List[Double])]
+  def metricValues: MetricValues[T]
 
 object Model:
   def getAvgLoss[T: ClassTag](losses: List[T])(using n: Fractional[T]): T =

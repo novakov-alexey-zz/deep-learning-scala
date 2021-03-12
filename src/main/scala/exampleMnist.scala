@@ -39,8 +39,10 @@ import scala.reflect.ClassTag
     (xData, yData) 
 
   val (xTrain, yTrain) = prepareData(dataset.trainImage, dataset.trainLabels)
-  val model = ann.train(xTrain, yTrain, epochs = 10, shuffle = true)
-
+  val start = System.currentTimeMillis()
+  val model = ann.train(xTrain, yTrain, epochs = 15, shuffle = true)
+  println(s"training time: ${(System.currentTimeMillis() - start) / 1000f} in sec")
+  
   val (xTest, yTest) = prepareData(dataset.testImages, dataset.testLabels)
   val testPredicted = model(xTest)
   val value = accuracy(yTest, testPredicted)
@@ -54,5 +56,8 @@ import scala.reflect.ClassTag
   val label = dataset.testLabels.as1D.data.head  
   val predicted = model(singleTestImage.as2D).argMax.as0D.data  
   println(s"predicted = $predicted")
+  
   assert(label == predicted, 
     s"Predicted label is not equal to expected '$label' label, but was '$predicted'")
+  
+  storeMetrics(model, Path.of("metrics/mnist.csv"))    
