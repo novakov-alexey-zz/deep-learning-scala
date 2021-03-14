@@ -1,3 +1,5 @@
+package examples
+
 import ml.transformation.{castTo, castFromTo}
 import ml.tensors.api._
 import ml.tensors.ops._
@@ -27,7 +29,7 @@ import scala.reflect.ClassTag
     batchSize = 128,
     gradientClipping = clipByValue(5.0d)
   )
-    .add(Dense(relu, 100))      
+    .add(Dense(relu, 50))      
     .add(Dense(softmax, 10))
   
   val encoder = OneHotEncoder(

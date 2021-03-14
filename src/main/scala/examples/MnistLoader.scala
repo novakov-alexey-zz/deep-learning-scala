@@ -1,3 +1,5 @@
+package examples
+
 import ml.tensors.api._
 import ml.tensors.ops._
 

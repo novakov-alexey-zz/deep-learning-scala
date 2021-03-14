@@ -13,6 +13,6 @@ __Implementation includes:__
 
 
 See examples: 
-- [Classification with Artificial Neural Network](src/main/scala/exampleAnn.scala)
-- [Linear Regression](src/main/scala/exampleLinearRegression.scala)
-- [MNIST Images Classification](src/main/scala/exampleMnist.scala)
+- [Classification with Artificial Neural Network](src/main/scala/examples/multipleRegression.scala)
+- [Linear Regression](src/main/scala/examples/linearRegression.scala)
+- [MNIST Images Classification](src/main/scala/examples/MNIST.scala)

@@ -1,3 +1,5 @@
+package examples
+
 import ml.network.Model
 
 import scala.util.Using

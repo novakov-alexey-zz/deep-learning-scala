@@ -1,3 +1,5 @@
+package examples
+
 import ml.preprocessing._
 import ml.transformation.castTo
 import ml.tensors.api._
@@ -11,7 +13,7 @@ import java.io.{File, PrintWriter}
 import scala.reflect.ClassTag
 import scala.util.Using
 
-@main def ann() =
+@main def multipleRegression() =
 
   def createEncoders[T: Numeric: ClassTag](
     data: Tensor2D[String]
