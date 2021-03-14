@@ -1,3 +1,5 @@
+package examples
+
 import ml.transformation.{castTo, castFromTo}
 import ml.tensors.api._
 import ml.tensors.ops._
@@ -27,7 +29,7 @@ import scala.reflect.ClassTag
     batchSize = 128,
     gradientClipping = clipByValue(5.0d)
   )
-    .add(Dense(relu, 100))      
+    .add(Dense(relu, 50))      
     .add(Dense(softmax, 10))
   
   val encoder = OneHotEncoder(
@@ -39,8 +41,10 @@ import scala.reflect.ClassTag
     (xData, yData) 
 
   val (xTrain, yTrain) = prepareData(dataset.trainImage, dataset.trainLabels)
-  val model = ann.train(xTrain, yTrain, epochs = 10, shuffle = true)
-
+  val start = System.currentTimeMillis()
+  val model = ann.train(xTrain, yTrain, epochs = 15, shuffle = true)
+  println(s"training time: ${(System.currentTimeMillis() - start) / 1000f} in sec")
+  
   val (xTest, yTest) = prepareData(dataset.testImages, dataset.testLabels)
   val testPredicted = model(xTest)
   val value = accuracy(yTest, testPredicted)
@@ -54,5 +58,8 @@ import scala.reflect.ClassTag
   val label = dataset.testLabels.as1D.data.head  
   val predicted = model(singleTestImage.as2D).argMax.as0D.data  
   println(s"predicted = $predicted")
+  
   assert(label == predicted, 
     s"Predicted label is not equal to expected '$label' label, but was '$predicted'")
+  
+  storeMetrics(model, Path.of("metrics/mnist.csv"))    

@@ -1,3 +1,5 @@
+package examples
+
 import ml.preprocessing._
 import ml.transformation.castTo
 import ml.tensors.api._
@@ -11,7 +13,7 @@ import java.io.{File, PrintWriter}
 import scala.reflect.ClassTag
 import scala.util.Using
 
-@main def ann() =
+@main def multipleRegression() =
 
   def createEncoders[T: Numeric: ClassTag](
     data: Tensor2D[String]
@@ -72,10 +74,5 @@ import scala.util.Using
   val testPredicted = model(xTest)
   val value = accuracy(yTest, testPredicted)
   println(s"test accuracy = $value")  
-
-  val header = s"epoch,loss,${model.metricValues.map(_._1.name).mkString(",")}"
-  val acc = model.metricValues.headOption.map(_._2).getOrElse(Nil)
-  val lrData = model.history.losses.zip(acc).zipWithIndex.map { case ((loss, acc), epoch) =>      
-    List(epoch.toString, loss.toString, acc.toString)      
-  } 
-  store("metrics/ann.csv", header, lrData)
+  
+  storeMetrics(model, Path.of("metrics/ann.csv"))

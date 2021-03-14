@@ -4,6 +4,7 @@ object api:
   final type StandardGD = ml.network.StandardGD
   final type Adam = ml.network.Adam
   final type Stub = ml.network.Stub
+  final type MetricValues[T] = ml.network.MetricValues[T]
   
   final type RandomUniform = ml.network.RandomUniform
   final type HeNormal = ml.network.HeNormal
@@ -12,6 +13,7 @@ object api:
   export ml.network.optimizers.given
   export ml.network.Layer
   export ml.network.Sequential
+  export ml.network.Model
   export ml.network.GradientClippingApi.*
   export ml.network.MetricApi.*
   export ml.network.Metric
