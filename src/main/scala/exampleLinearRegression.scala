@@ -49,7 +49,7 @@ import java.io.{File,PrintWriter}
   println(s"true bias: $bias")
 
   // Test Dataset
-  val testPredicted = model(xTest)  
+  val testPredicted = model(xTest.T)  
   val value = meanSquareError[Double].apply(yTest.T, testPredicted)
   println(s"test meanSquareError = $value")
 
@@ -83,7 +83,7 @@ import java.io.{File,PrintWriter}
   val losses = weights.par.map { w =>
     val wT = w.as2D
     biases.foldLeft(ArrayBuffer.empty[Double]) { (acc, b) =>
-      val loss = ann.loss(x.T, y.T, List(Layer(wT, b.as1D)))  
+      val loss = ann.loss(x.T, y.T, List(Dense(w = Some(wT), b = Some(b.as1D))))  
       acc :+ loss
     }
   }

@@ -14,9 +14,11 @@ private trait genOps:
   extension [T: ClassTag: Numeric](t: Tensor[T])
     // dot product    
     def *(that: Tensor[T]): Tensor[T] = TensorOps.mul(t, that)    
+    def *(that: Option[Tensor[T]]): Tensor[T] = TensorOps.optMul(t, that)    
     def -(that: T): Tensor[T] = TensorOps.subtract(t, Tensor0D(that))
     def -(that: Tensor[T]): Tensor[T] = TensorOps.subtract(t, that)
     def +(that: Tensor[T]): Tensor[T] = TensorOps.plus(t, that)    
+    def +(that: Option[Tensor[T]]): Tensor[T] = TensorOps.optPlus(t, that)    
     def +(that: T): Tensor[T] = TensorOps.plus(t, Tensor0D(that))    
     def sum: T = TensorOps.sum(t)        
     def split(fraction: Float): (Tensor[T], Tensor[T]) = TensorOps.split(fraction, t)
@@ -139,6 +141,9 @@ object TensorOps:
   private def checkShapeEquality[T](a: Tensor[T],  b: Tensor[T]) = 
     assert(a.shape == b.shape, s"Tensors must have the same shape: ${a.shape} != ${b.shape}")
 
+  def optPlus[T: ClassTag: Numeric](a: Tensor[T], b: Option[Tensor[T]]): Tensor[T] =
+    b.fold(a)(t => plus(a, t))
+
   def plus[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match
       case (Tensor1D(data), Tensor1D(data2)) =>
@@ -187,6 +192,9 @@ object TensorOps:
       for j <- 0 until cols do
         sum(i)(j) = t1.data(i)(j) + t2.data(j)
     Tensor2D(sum)
+
+  def optMul[T: ClassTag: Numeric](a: Tensor[T], b: Option[Tensor[T]]): Tensor[T] =
+    b.fold(a)(t => mul(a, t))     
 
   def mul[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match
