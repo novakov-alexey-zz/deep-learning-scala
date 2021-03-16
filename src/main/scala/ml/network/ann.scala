@@ -54,7 +54,7 @@ case class Sequential[T: ClassTag: Fractional, U, V](
     learningRate: T,
     metrics: List[Metric[T]] = Nil,
     batchSize: Int = 16,
-    layerStack: Int => List[Layer[T]] = _ => List.empty[Layer[T]],    
+    layerStack: List[Int] => List[Layer[T]] = _ => List.empty[Layer[T]],    
     layers: List[Layer[T]] = Nil,
     history: TrainHistory[T] = TrainHistory[T](),    
     metricValues: MetricValues[T] = Nil,
@@ -76,17 +76,14 @@ case class Sequential[T: ClassTag: Fractional, U, V](
     lossFunc(y, predicted)  
 
   def add(layer: Layer[T]): Sequential[T, U, V] =
-    copy(layerStack = (inputs) => 
-      val currentLayers = layerStack(inputs)
-      val prevInput = currentLayers.lastOption.map(_.units).getOrElse(inputs)
-      val w = initializer.weights(prevInput, layer.units)
-      val b = initializer.biases(layer.units)
-      val optimizerParams = optimizer.init(w, b)
-      (currentLayers :+ layer.withParams(w, b, optimizerParams))
+    copy(layerStack = inputShape => 
+      val currentLayers = layerStack(inputShape)
+      val prevShape = currentLayers.lastOption.map(_.shape).getOrElse(inputShape)      
+      (currentLayers :+ layer.init(prevShape, initializer, optimizer))
     )
 
   private def trainEpoch(
-      batches: Iterable[(Array[Array[T]], Array[Array[T]])],
+      batches: Iterable[(Tensor[T], Tensor[T])],
       layers: List[Layer[T]],
       epoch: Int
   ) =    
@@ -94,8 +91,8 @@ case class Sequential[T: ClassTag: Fractional, U, V](
       batches.zipWithIndex.foldLeft(layers, ListBuffer.empty[T], ListBuffer.fill(metrics.length)(0)) {
         case ((layers, batchLoss, epochMetrics), ((xBatch, yBatch), i)) =>
           // forward
-          val activations = activate(xBatch.as2D, layers)
-          val actual = yBatch.as2D          
+          val activations = activate(xBatch, layers)
+          val actual = yBatch          
           val predicted = activations.last.a
           val error = predicted - actual          
           val loss = lossFunc(actual, predicted)
@@ -118,9 +115,8 @@ case class Sequential[T: ClassTag: Fractional, U, V](
   def train(x: Tensor[T], y: Tensor[T], epochs: Int, shuffle: Boolean = true): Model[T] =
     lazy val actualBatches = y.batches(batchSize).toArray
     lazy val batches = x.batches(batchSize).zip(actualBatches).toArray
-    def getBatches = if shuffle then Random.shuffle(batches) else batches.toIterable
-    val inputs = x.cols
-    val currentLayers = getOrInitLayers(inputs)
+    def getBatches = if shuffle then Random.shuffle(batches) else batches.toIterable    
+    val currentLayers = getOrInitLayers(x.shape)
     val initialMetrics = metrics.map(_ -> List.empty[Double])
 
     val (updatedLayers, lHistory, epochLosses, metricValues) =
@@ -162,6 +158,6 @@ case class Sequential[T: ClassTag: Fractional, U, V](
   def reset(): Model[T] =
     copy(layers = Nil)
 
-  private def getOrInitLayers(inputs: Int) =
-    if layers.isEmpty then layerStack(inputs)
+  private def getOrInitLayers(inputShape: List[Int]) =
+    if layers.isEmpty then layerStack(inputShape)
     else layers
