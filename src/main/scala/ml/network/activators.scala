@@ -18,12 +18,23 @@ object ActivationFuncApi:
   def relu[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T]:
 
     override def apply(x: Tensor[T]): Tensor[T] =
-      x.map(t => max(n.zero, t))
+      x.map(t => if t < n.zero then n.zero else t)
 
     override def derivative(x: Tensor[T]): Tensor[T] =
       x.map(t => if t < n.zero then n.zero else n.one)
 
     override val name = "relu"
+  
+  def leakyRelu[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T]:
+    val scaler = castFromTo[Double, T](0.01)
+    
+    override def apply(x: Tensor[T]): Tensor[T] =
+      x.map(t =>  if t < n.zero then n.times(scaler, t) else t)
+
+    override def derivative(x: Tensor[T]): Tensor[T] =
+      x.map(t => if t < n.zero then scaler else n.one)
+
+    override val name = "leakyRelu"
   
   def sigmoid[T: ClassTag](using n: Fractional[T]) = new ActivationFunc[T]:
 

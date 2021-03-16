@@ -36,8 +36,8 @@ import scala.util.Using
     batchSize = 64,
     gradientClipping = clipByValue(5.0d)
   )
-    .add(Dense(relu, 6))
-    .add(Dense(relu, 6))    
+    .add(Dense(leakyRelu, 6))
+    .add(Dense(leakyRelu, 6))    
     .add(Dense(sigmoid))
   
   val dataLoader = TextLoader(Path.of("data", "Churn_Modelling.csv")).load()
