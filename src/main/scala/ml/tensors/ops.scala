@@ -22,9 +22,14 @@ private trait genOps:
     def +(that: T): Tensor[T] = TensorOps.plus(t, Tensor0D(that))    
     def sum: T = TensorOps.sum(t)        
     def split(fraction: Float): (Tensor[T], Tensor[T]) = TensorOps.split(fraction, t)
+    
     // Hadamard product
     def multiply(that: Tensor[T]): Tensor[T] = TensorOps.multiply(t, that)
-    def batches(batchSize: Int): Iterator[Array[Array[T]]] = TensorOps.batches(t, batchSize)
+    def multiply(that: Option[Tensor[T]]): Tensor[T] = TensorOps.optMultiply(t, that)
+    def |*|(that: Tensor[T]): Tensor[T] = TensorOps.multiply(t, that)
+    def |*|(that: Option[Tensor[T]]): Tensor[T] = TensorOps.optMultiply(t, that)
+
+    def batches(batchSize: Int): Iterator[Tensor[T]] = TensorOps.batches(t, batchSize)
     def equalRows(that: Tensor[T]): Int = TensorOps.equalRows(t, that)
     def clipInRange(min: T, max: T): Tensor[T] = TensorOps.clipInRange(t, min, max)
     def :**(to: Int): Tensor[T] = TensorOps.pow(t, to)
@@ -51,11 +56,16 @@ object ops extends genOps:
   extension [T: ClassTag](t: Tensor2D[T])
     def col(i: Int): Tensor1D[T] = Tensor1D(TensorOps.col(t.data, i))
     def T: Tensor2D[T] = TensorOps.transpose(t).asInstanceOf[Tensor2D[T]]
+    def slice(
+      rows: Option[(Int, Int)],
+      cols: Option[(Int, Int)]
+    ): Tensor2D[T] =
+      Tensor2D(t.data.slice(rows, cols))
     
   extension [T: ClassTag](t: Tensor[T])
     def as0D: Tensor0D[T] = TensorOps.as0D(t)    
     def as1D: Tensor1D[T] = TensorOps.as1D(t)    
-    def as2D: Tensor2D[T] = TensorOps.as2D(t)
+    def as2D: Tensor2D[T] = TensorOps.as2D(t)    
 
   extension [T: ClassTag](t: T)
     def asT: Tensor[T] = Tensor0D(t)
@@ -70,6 +80,7 @@ object ops extends genOps:
     // dot product
     def *(that: Tensor[T]): Tensor[T] = TensorOps.mul(Tensor0D(t), that)
     def -(that: Tensor[T]): Tensor[T] = TensorOps.subtract(Tensor0D(t), that)    
+    def +(that: Tensor[T]): Tensor[T] = TensorOps.plus(Tensor0D(t), that)    
   
   extension [T: ClassTag: Numeric](a: Array[T])
     def as1D: Tensor1D[T] = Tensor1D(a)
@@ -77,6 +88,12 @@ object ops extends genOps:
   
   extension [T: ClassTag: Numeric](a: Array[Array[T]])
     def as2D: Tensor2D[T] = Tensor2D(a)
+  
+  extension [T: ClassTag: Numeric](a: Array[Tensor2D[T]])
+    def as3D: Tensor3D[T] = Tensor3D(a:_*)
+  
+  extension [T: ClassTag: Numeric](a: Array[Array[Tensor2D[T]]])
+    def as4D: Tensor4D[T] = Tensor4D(a:_*)
 
   extension [T: ClassTag](a: Array[Array[T]])
     def col(i: Int): Array[T] = TensorOps.col(a, i)
@@ -88,6 +105,8 @@ object ops extends genOps:
   extension [T: ClassTag: Numeric](pair: (Tensor[T], Tensor[T]))
     def map2[U: ClassTag: Numeric](f: (T, T) => U): Tensor[U] = 
       TensorOps.map2(pair._1, pair._2, f)
+    def product(axis: Int)(f: (Tensor[T], Tensor[T], (List[Int], List[Int])) => Tensor[T]): Tensor[T] =
+      TensorOps.product(pair._1, pair._2, axis, f)
 
     def split(
         fraction: Float
@@ -130,7 +149,7 @@ object TensorOps:
       matrix: Tensor2D[T],
       vector: Tensor1D[T]
   ) =
-    val cols = matrix.cols
+    val cols = matrix.shape2D._2
     assert(
       cols == vector.length,
       s"trailing axis must have the same size, $cols != ${vector.length}"
@@ -177,6 +196,10 @@ object TensorOps:
         Tensor1D(data2.map(_ + data))
       case (Tensor0D(data), Tensor0D(data2)) =>
         Tensor0D(data + data2)      
+      case _ => notImplementedError(a :: b:: Nil)
+
+  private def notImplementedError[T](ts: List[Tensor[T]]) =
+    sys.error(s"Not implemented for: ${ts.mkString("\n")}")
 
   private def matrixPlusVector[T: ClassTag: Numeric](
       t1: Tensor2D[T],
@@ -210,6 +233,7 @@ object TensorOps:
         Tensor0D(matMul(Array(data), asColumn(data2)).head.head)
       case (Tensor2D(data), Tensor2D(data2)) =>
         Tensor2D(matMul(data, data2))
+      case _ => notImplementedError(a :: b :: Nil)
 
   private def asColumn[T: ClassTag](a: Array[T]) = a.map(Array(_))
 
@@ -218,12 +242,15 @@ object TensorOps:
       case Tensor0D(data) => Tensor0D(f(data))
       case Tensor1D(data) => Tensor1D(data.map(f))
       case Tensor2D(data) => Tensor2D(data.map(_.map(f)))
+      case Tensor3D(data) => Tensor3D(data.map(_.map(_.map(f))))
+      case Tensor4D(data) => Tensor4D(data.map(_.map(_.map(_.map(f)))))      
   
   def mapRow[T: ClassTag, U: ClassTag](t: Tensor[T], f: Array[T] => Array[U]): Tensor[U] =
     t match
       case Tensor0D(data) => Tensor0D(f(Array(data)).head)
       case Tensor1D(data) => Tensor1D(f(data))
       case Tensor2D(data) => Tensor2D(data.map(f))
+      case _ => notImplementedError(t :: Nil)
   
   private def map2[T: ClassTag, U: ClassTag](a: Array[T], b: Array[T], f: (T, T) => U): Array[U] = 
     val res = Array.ofDim[U](a.length)
@@ -245,6 +272,31 @@ object TensorOps:
       case _ => 
         sys.error(s"Both tensors must have the same dimension: ${a.shape} != ${b.shape}")
 
+  def product[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T], axis: Int, 
+    f: (Tensor[T], Tensor[T], (List[Int], List[Int])) => Tensor[T]): Tensor[T] =    
+    assert(a.shape.length > axis, s"Left tensor shape has no axis '$axis'")
+    assert(b.shape.length > axis, s"Right tensor shape has no axis '$axis'")
+
+    (a, b, axis) match
+      case (t1 @ Tensor4D(data), t2 @ Tensor4D(data2), 2) => // this code does not scale to any axis so far :-(
+        val (tensors1 :: cubes1 :: _ ) = a.shape
+        val (tensors2 :: cubes2 :: _ ) = b.shape
+        val res = ArrayBuffer.empty[ArrayBuffer[Array[Array[T]]]]
+
+        for i1 <- 0 until tensors1 do
+          for j1 <- 0 until cubes1 do
+            val arg1 = Tensor2D(t1.data(i1)(j1))
+
+            for i2 <- 0 until tensors2 do
+              for j2 <- 0 until cubes2 do
+                val arg2 = Tensor2D(t2.data(i2)(j2))
+                val position = (List(i1, j1), List(i2, j2))
+                val resData = TensorOps.as2D(f(arg1, arg2, position)).data
+                res(i1)(j1) = resData              
+        Tensor4D(res.map(_.toArray).toArray)
+
+      case _ => notImplementedError(a :: b :: Nil)
+    
   private def colsCount[T](a: Array[Array[T]]): Int =
     a.headOption.map(_.length).getOrElse(0)
 
@@ -256,6 +308,7 @@ object TensorOps:
       case Tensor0D(data) => Tensor0D(data * scalar)
       case Tensor1D(data) => Tensor1D(data.map(_ * scalar))
       case Tensor2D(data) => Tensor2D(data.map(_.map(_ * scalar)))
+      case _ => notImplementedError(t :: Nil)
 
   private def matMul[T: ClassTag](
       a: Array[Array[T]],
@@ -282,24 +335,28 @@ object TensorOps:
       case Tensor0D(data)   => Tensor0D(data)
       case t1 @ Tensor1D(data) => Tensor0D(data.head)
       case Tensor2D(data)   => Tensor0D(data.head.head)
+      case _ => notImplementedError(t :: Nil)
   
   def as1D[T: ClassTag](t: Tensor[T]): Tensor1D[T] =
     t match
       case Tensor0D(data)   => Tensor1D(data)
       case t1 @ Tensor1D(_) => t1
       case Tensor2D(data)   => Tensor1D(data.flatten)
+      case _ => notImplementedError(t :: Nil)
 
   def as2D[T: ClassTag](t: Tensor[T]): Tensor2D[T] =
     t match
       case Tensor0D(data)   => Tensor2D(Array(Array(data)))
       case Tensor1D(data)   => Tensor2D(data.map(Array(_)))
       case t2 @ Tensor2D(_) => t2
+      case _ => notImplementedError(t :: Nil)
 
   def sum[T: Numeric: ClassTag](t: Tensor[T]): T =
     t match
       case Tensor0D(data) => data
       case Tensor1D(data) => data.sum
       case Tensor2D(data) => data.map(_.sum).sum
+      case _ => notImplementedError(t :: Nil)
   
   def sumRows[T: Numeric: ClassTag](t: Tensor[T]): Tensor[T] =
     t match
@@ -307,12 +364,14 @@ object TensorOps:
       case Tensor1D(_) => t
       case Tensor2D(data) => 
         Tensor1D(data.reduce((a, b) => a.lazyZip(b).map(_ + _).toArray))
+      case _ => notImplementedError(t :: Nil)
   
   def sumCols[T: Numeric: ClassTag](t: Tensor[T]): Tensor[T] =
     t match
       case Tensor0D(_) => t
       case Tensor1D(data) => Tensor0D(data.sum)
       case Tensor2D(data) => Tensor2D(data.map(a => Array(a.sum)))
+      case _ => notImplementedError(t :: Nil)
 
   def transpose[T: ClassTag](t: Tensor[T]): Tensor[T] =
     t match
@@ -339,6 +398,7 @@ object TensorOps:
       case Tensor2D(data) =>
         val (l, r) = splitArray(fraction, data)
         (Tensor2D(l), Tensor2D(r))
+      case _ => notImplementedError(t :: Nil)
 
   private def splitArray[T](
       fraction: Float,
@@ -376,14 +436,21 @@ object TensorOps:
         Tensor2D(sum)
       case (a, b) => sys.error(s"Not implemented for:\n$a\nand\n$b")
 
+  def optMultiply[T: Numeric: ClassTag](
+    t1: Tensor[T], t2: Option[Tensor[T]]
+  ): Tensor[T] = 
+    t2.fold(t1)(a => multiply(t1, a))
+
   def batches[T: ClassTag: Numeric](
       t: Tensor[T],
       batchSize: Int
-  ): Iterator[Array[Array[T]]] =
+  ): Iterator[Tensor[T]] =
     t match
-      case Tensor1D(_)    => as2D(t).data.grouped(batchSize)
-      case Tensor2D(data) => data.grouped(batchSize)
-      case Tensor0D(data) => Iterator(Array(Array(data)))
+      case Tensor0D(data) => Iterator(t)
+      case Tensor1D(data) => data.grouped(batchSize).map(Tensor1D(_))
+      case Tensor2D(data) => data.grouped(batchSize).map(Tensor2D(_))
+      case Tensor3D(data) => data.grouped(batchSize).map(Tensor3D(_))
+      case _ => notImplementedError(t :: Nil)
 
   def equalRows[T: ClassTag](t1: Tensor[T], t2: Tensor[T]): Int = 
     assert(t1.shape == t2.shape, sys.error(s"Tensors must have the same shape: ${t1.shape} != ${t2.shape}"))
@@ -404,13 +471,7 @@ object TensorOps:
           else if vAbs < min then min
           else v
 
-    def clipArray(data: Array[T]) =
-      data.map(clipValue)
-
-    t match 
-      case Tensor2D(data) => Tensor2D(data.map(clipArray))
-      case Tensor1D(data) => Tensor1D(clipArray(data))
-      case Tensor0D(data) => Tensor0D(clipValue(data))          
+    map(t, clipValue)    
   
   def div[T: ClassTag: Fractional](t1: Tensor[T], t2: Tensor[T]): Tensor[T] =    
     (t1, t2) match
@@ -435,10 +496,22 @@ object TensorOps:
       case Tensor0D(data) => Tensor0D(powValue(data))
       case Tensor1D(data) => Tensor1D(data.map(powValue))
       case Tensor2D(data) => Tensor2D(data.map(_.map(powValue)))
+      case _ => notImplementedError(t :: Nil)
   
   def zero[T: ClassTag](t: Tensor[T])(using n: Numeric[T]): Tensor[T] =
-    map(t, _ => n.zero)
-  
+    t match 
+      case Tensor0D(_) => Tensor0D(n.zero)
+      case Tensor1D(data) => Tensor1D(Array.fill(data.length)(n.zero))
+      case t1 @ Tensor2D(_) => 
+        val (rows, cols) = t1.shape2D
+        Tensor2D(Array.fill(rows, cols)(n.zero))
+      case t1 @ Tensor3D(_) =>
+        val (cubes, rows, cols) = t1.shape3D
+        Tensor3D(Array.fill(cubes, rows, cols)(n.zero))
+      case t1 @ Tensor4D(_) =>
+        val (tensors, cubes, rows, cols) = t1.shape4D
+        Tensor4D(Array.fill(tensors, cubes, rows, cols)(n.zero))
+
   def col[T: ClassTag](data: Array[Array[T]], i: Int): Array[T] =
     val to = i + 1
     slice(data, None, Some(i, to)).flatMap(_.headOption)
@@ -476,6 +549,7 @@ object TensorOps:
       case Tensor2D(data) => Tensor1D(data.map(maxIndex))
       case Tensor1D(data) => Tensor0D(maxIndex(data))
       case Tensor0D(_) => t
+      case _ => notImplementedError(t :: Nil)
 
   def outer[T: ClassTag: Numeric](t1: Tensor[T], t2: Tensor[T]): Tensor[T] =
     def product(a: Array[T], b: Array[T]) =
@@ -494,12 +568,14 @@ object TensorOps:
       case (Tensor2D(d), Tensor0D(d2)) => scalarMul(t1, d2)
       case (Tensor2D(d), Tensor1D(d2)) => Tensor2D(product(d.flatten, d2))
       case (Tensor2D(d), Tensor2D(d2)) => Tensor2D(product(d.flatten, d2.flatten))
+      case _ => notImplementedError(t1 :: t2 :: Nil)
 
   def flatten[T: ClassTag](t: Tensor[T]): Tensor[T] = 
     t match
       case Tensor0D(_) => t
       case Tensor1D(_) => t
       case Tensor2D(data) => Tensor1D(data.flatten)
+      case _ => notImplementedError(t :: Nil)
   
   def diag[T: ClassTag](t: Tensor[T])(using n: Numeric[T]): Tensor[T] =
     t match
@@ -517,3 +593,4 @@ object TensorOps:
           for j <- 0 until size if i == j do
             res(i) = d(i)(j)
         Tensor1D(res)
+      case _ => notImplementedError(t :: Nil)
