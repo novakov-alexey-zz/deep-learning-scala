@@ -36,17 +36,19 @@ extension [T: ClassTag: Numeric](a: NDArray[T])
   def reshape(shape: Int*): NDArray[T] =
     val newShape = shape.toList
     assert(a.shape.reduce(_ * _) == newShape.reduce(_ * _), s"Current shape ${a.shape} does not fit new shape = $shape")
-    def reshaped(shape: List[Int]): Array[Any] = 
+    def group(ar: Array[Any], shape: List[Int]): Array[Any] = 
       shape match
-        case h :: Nil => a.data.grouped(h).toArray.asInstanceOf[Array[Any]]
-        case h :: t => reshaped(t).grouped(h).toArray.asInstanceOf[Array[Any]]
-        case _ => a.data
+        case h :: Nil => ar.grouped(h).toArray
+        case h :: t => group(ar.grouped(h).toArray, t)
+        case _ => ar
         
-    NDArray[T](reshaped(newShape.tail), newShape)      
+    NDArray[T](group(a.data, newShape.reverse), newShape)      
 
 
-// @main 
+@main 
 def test =  
   val ones = NDArray.ones[Int](16)
   println(ones)  
   println(ones.reshape(2, 2, 2, 2))
+  
+  NDArray[Int](Array(Array(Array(1))), List(1,1,1))
