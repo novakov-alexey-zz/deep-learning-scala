@@ -50,10 +50,8 @@ object MnistLoader:
       samples: Int
   )(using n: Numeric[T]): (Tensor[T], Tensor[T]) =
     Using.resource(
-      new DataInputStream(
-        new BufferedInputStream(
-          new GZIPInputStream(Files.newInputStream(images))
-        )
+      new DataInputStream(        
+        new GZIPInputStream(Files.newInputStream(images))        
       )
     ) { imageInputStream =>
       val magicNumber = imageInputStream.readInt()
@@ -72,10 +70,8 @@ object MnistLoader:
       // println("number of cols: " + nCols)
 
       Using.resource(
-        new DataInputStream(
-          new BufferedInputStream(
-            new GZIPInputStream(Files.newInputStream(labels))
-          )
+        new DataInputStream(        
+          new GZIPInputStream(Files.newInputStream(labels))          
         )
       ) { labelInputStream =>
         val labelMagicNumber = labelInputStream.readInt()
