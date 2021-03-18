@@ -66,6 +66,7 @@ object ops extends genOps:
     def as0D: Tensor0D[T] = TensorOps.as0D(t)    
     def as1D: Tensor1D[T] = TensorOps.as1D(t)    
     def as2D: Tensor2D[T] = TensorOps.as2D(t)    
+    def as4D: Tensor4D[T] = TensorOps.as4D(t)    
 
   extension [T: ClassTag](t: T)
     def asT: Tensor[T] = Tensor0D(t)
@@ -92,8 +93,11 @@ object ops extends genOps:
   extension [T: ClassTag: Numeric](a: Array[Tensor2D[T]])
     def as3D: Tensor3D[T] = Tensor3D(a:_*)
   
+  extension [T: ClassTag: Numeric](a: Array[Array[Array[Array[T]]]])
+    def as4D: Tensor4D[T] = Tensor4D(a)
+  
   extension [T: ClassTag: Numeric](a: Array[Array[Tensor2D[T]]])
-    def as4D: Tensor4D[T] = Tensor4D(a:_*)
+    def as4D: Tensor4D[T] = Tensor4D(a.map(_.map(_.data)))
 
   extension [T: ClassTag](a: Array[Array[T]])
     def col(i: Int): Array[T] = TensorOps.col(a, i)
@@ -281,7 +285,7 @@ object TensorOps:
       case (t1 @ Tensor4D(data), t2 @ Tensor4D(data2), 2) => // this code does not scale to any axis so far :-(
         val (tensors1 :: cubes1 :: _ ) = a.shape
         val (tensors2 :: cubes2 :: _ ) = b.shape
-        val res = ArrayBuffer.empty[ArrayBuffer[Array[Array[T]]]]
+        val res = Array.ofDim[T](tensors2, cubes2, 0, 0)
 
         for i1 <- 0 until tensors1 do
           for j1 <- 0 until cubes1 do
@@ -292,7 +296,7 @@ object TensorOps:
                 val arg2 = Tensor2D(t2.data(i2)(j2))
                 val position = (List(i1, j1), List(i2, j2))
                 val resData = TensorOps.as2D(f(arg1, arg2, position)).data
-                res(i1)(j1) = resData              
+                res(i2)(j2) = resData              
         Tensor4D(res.map(_.toArray).toArray)
 
       case _ => notImplementedError(a :: b :: Nil)
@@ -349,6 +353,14 @@ object TensorOps:
       case Tensor0D(data)   => Tensor2D(Array(Array(data)))
       case Tensor1D(data)   => Tensor2D(data.map(Array(_)))
       case t2 @ Tensor2D(_) => t2
+      case _ => notImplementedError(t :: Nil)
+  
+  def as4D[T: ClassTag](t: Tensor[T]): Tensor4D[T] =
+    t match
+      case Tensor0D(data)   => Tensor4D(Array(Array(Array(Array(data)))))
+      case Tensor1D(data)   => Tensor4D(Array(Array(data.map(Array(_)))))
+      case t2 @ Tensor2D(_) => Tensor4D(Array(Array(t2.data)))
+      case t1 @ Tensor4D(_) => t1
       case _ => notImplementedError(t :: Nil)
 
   def sum[T: Numeric: ClassTag](t: Tensor[T]): T =

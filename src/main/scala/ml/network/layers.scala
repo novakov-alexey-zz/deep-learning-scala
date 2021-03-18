@@ -73,6 +73,7 @@ case class Conv2D[T: ClassTag: Numeric](
     val shape = List(channels, filterCount, width, height)
     copy(w = Some(w), b = Some(b), shape = shape, optimizerParams = optimizerParams)
 
+  // forward 
   override def apply(x: Tensor[T]): Activation[T] =
     val z = (w, b) match
       case (Some(weights), Some(biases)) =>
@@ -87,19 +88,20 @@ case class Conv2D[T: ClassTag: Numeric](
     val image = t1.as2D
     val filter = t2.as2D
     val (rows, cols) = image.shape2D    
-    val ((filterId :: _), _) = position
-    val res = ListBuffer.empty[ListBuffer[T]]
-    val filterBias = bias.as1D.data(filterId)
+    val (_, (_ :: filterId)) = position
+    val res = ListBuffer.empty[Array[T]]
+    val filterBias = bias.as1D.data(filterId.head)
 
     for i <- 0 to rows - kernel by stride do
       val row = ListBuffer.empty[T]
       for j <- 0 to cols - kernel by stride do
         val area = image.slice(Some(i, i + kernel), Some(j, j + kernel))
         row += ((area |*| filter).sum + filterBias).as0D.data
-      res += row  
+      res += row.toArray  
 
-    Tensor2D(res.map(_.toArray).toArray)        
+    Tensor2D(res.toArray)        
 
+  // backward  
   override def update(wGradient: Tensor[T], bGradient: Tensor[T], optimizerParams: Option[OptimizerParams[T]] = None): Layer[T] =
     // val updatedW = w.map(_ - wGradient)  
     // val updatedB = b.map(_ - bGradient)  

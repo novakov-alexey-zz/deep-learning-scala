@@ -3,6 +3,7 @@ package ml.tensors.api
 import scala.math.Numeric.Implicits._
 import scala.reflect.ClassTag
 import math.Ordering.Implicits.infixOrderingOps
+import Tensor._
 
 sealed trait Tensor[T]:  
   def shape: List[Int]
@@ -12,6 +13,20 @@ sealed trait Tensor[T]:
     shape.drop(axis)
 
 object Tensor:    
+  def printArray(a: Array[_], meta: String): String = 
+    def loop(a: Array[_], level: Int = 1): Array[String] = 
+      a.map { e =>
+        e match 
+          case ar: Array[_] =>
+            val start = s"\n${" " * level}["
+            val body = loop(ar, level + 1).mkString(",")          
+            val end = if body.last == ']' then s"\n${" " * level}]" else "]"
+            s"$start$body$end"
+          case _ => s"$e"
+      }
+    val str = loop(a).mkString(", ")  
+    s"$meta:\n[" + str + (if str.last == ']' then "\n" else "") + "]"  
+
   def of[T:ClassTag](size: Int, size2: Int): Tensor2D[T] = 
     Tensor2D[T](Array.fill(size)(of[T](size2).data))
 
@@ -76,6 +91,13 @@ case class Tensor3D[T: ClassTag](data: Array[Array[Array[T]]]) extends Tensor[T]
 
   override def length: Int = data.length
 
+  // TODO: remove duplication
+  private val meta =
+    s"shape: ${shape.mkString("x")}, Tensor3D[${summon[ClassTag[T]]}]"
+
+  override def toString: String =    
+    printArray(data, meta)
+
 object Tensor3D:
   def apply[T: ClassTag](matrices: Tensor2D[T]*): Tensor3D[T] =
     Tensor3D(matrices.toArray.map(t => t.data))
@@ -97,6 +119,15 @@ case class Tensor4D[T: ClassTag](data: Array[Array[Array[Array[T]]]]) extends Te
 
   override def length: Int = data.length
 
+  private val meta =
+    s"shape: ${shape.mkString("x")}, Tensor4D[${summon[ClassTag[T]]}]"
+
+  override def toString: String =    
+    printArray(data, meta)
+    
 object Tensor4D:
-  def apply[T: ClassTag](cubes: Array[Tensor2D[T]]*): Tensor4D[T] =
-    Tensor4D(cubes.toArray.map(t => t.map(_.data)))
+  // def apply[T: ClassTag](cubes: Array[Tensor2D[T]]*): Tensor4D[T] =
+  //   Tensor4D(cubes.toArray.map(t => t.map(_.data)))
+  
+  def apply[T: ClassTag](cubes: Tensor3D[T]*): Tensor4D[T] =
+    Tensor4D(cubes.toArray.map(t => t.data))
