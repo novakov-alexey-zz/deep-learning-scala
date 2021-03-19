@@ -126,8 +126,5 @@ case class Tensor4D[T: ClassTag](data: Array[Array[Array[Array[T]]]]) extends Te
     printArray(data, meta)
     
 object Tensor4D:
-  // def apply[T: ClassTag](cubes: Array[Tensor2D[T]]*): Tensor4D[T] =
-  //   Tensor4D(cubes.toArray.map(t => t.map(_.data)))
-  
   def apply[T: ClassTag](cubes: Tensor3D[T]*): Tensor4D[T] =
     Tensor4D(cubes.toArray.map(t => t.data))

@@ -63,43 +63,51 @@ case class Conv2D[T: ClassTag: Numeric](
   override def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Layer[T] =    
     val (width, height) = kernel
     val channels = prevShape.drop(1).headOption.getOrElse(0) // take second axis as inputs    
-    val w = (0 until channels)
-        .map(_ => (0 until filterCount)
-        .map(_ => initializer.weights(width,  height)).toArray)
+    val w = 
+      (0 until filterCount)
+        .map(_ =>  (0 until channels).toArray
+        .map(_ => initializer.weights(width,  height)))
         .toArray.as4D
 
     val b = initializer.biases(filterCount)
     val optimizerParams = optimizer.init(w, b)    
-    val shape = List(channels, filterCount, width, height)
+    val shape = List(filterCount, channels, width, height)
     copy(w = Some(w), b = Some(b), shape = shape, optimizerParams = optimizerParams)
 
   // forward 
   override def apply(x: Tensor[T]): Activation[T] =
     val z = (w, b) match
       case (Some(weights), Some(biases)) =>
-        val f = conv(kernel._1, strides._1, biases)          
-        (x, weights).product(axis = 2)(f)
+        conv(kernel._1, strides._1, biases)(x, weights)
       case _ => x
     
     val a = f(z)
     Activation(x, z, a)
 
-  private def conv(kernel: Int, stride: Int, bias: Tensor[T])(t1: Tensor[T], t2: Tensor[T], position: (List[Int], List[Int])): Tensor[T] =
-    val image = t1.as2D
-    val filter = t2.as2D
-    val (rows, cols) = image.shape2D    
-    val (_, (_ :: filterId)) = position
-    val res = ListBuffer.empty[Array[T]]
-    val filterBias = bias.as1D.data(filterId.head)
+  private def conv(kernel: Int, stride: Int, bias: Tensor[T])(t1: Tensor[T], t2: Tensor[T]): Tensor[T] =
+    val image = t1.as3D
+    val filter = t2.as4D
+    val (channels, rows, cols) = image.shape3D    
+    val filterBiases = bias.as1D.data
 
-    for i <- 0 to rows - kernel by stride do
-      val row = ListBuffer.empty[T]
-      for j <- 0 to cols - kernel by stride do
-        val area = image.slice(Some(i, i + kernel), Some(j, j + kernel))
-        row += ((area |*| filter).sum + filterBias).as0D.data
-      res += row.toArray  
+    val res = filter.data.zipWithIndex.map { (f, filterId) =>      
+      val channels = f.zip(image.data).map { (fc, ic) =>
+        val filteredChannel = ListBuffer[Array[T]]()
 
-    Tensor2D(res.toArray)        
+        for i <- 0 to rows - kernel by stride do
+          val row = ListBuffer.empty[T]
+          for j <- 0 to cols - kernel by stride do
+            val area = ic.slice(Some(i, i + kernel), Some(j, j + kernel)).as2D
+            row += (fc.as2D |*| area).sum
+          filteredChannel += row.toArray  
+
+        filteredChannel.toArray.as2D
+      }.reduce(_ + _)
+
+      channels.map(_ + filterBiases(filterId)).as2D
+    }
+
+    Tensor3D(res: _*)        
 
   // backward  
   override def update(wGradient: Tensor[T], bGradient: Tensor[T], optimizerParams: Option[OptimizerParams[T]] = None): Layer[T] =

@@ -62,10 +62,15 @@ object ops extends genOps:
     ): Tensor2D[T] =
       Tensor2D(t.data.slice(rows, cols))
     
+  extension [T: ClassTag: Numeric](t: Tensor2D[T])
+    def |*|(that: Tensor2D[T]): Tensor2D[T] = TensorOps.multiply(t, that).asInstanceOf[Tensor2D[T]]
+    def +(that: Tensor2D[T]): Tensor2D[T] = TensorOps.plus(t, that).asInstanceOf[Tensor2D[T]]
+
   extension [T: ClassTag](t: Tensor[T])
     def as0D: Tensor0D[T] = TensorOps.as0D(t)    
     def as1D: Tensor1D[T] = TensorOps.as1D(t)    
     def as2D: Tensor2D[T] = TensorOps.as2D(t)    
+    def as3D: Tensor3D[T] = TensorOps.as3D(t)    
     def as4D: Tensor4D[T] = TensorOps.as4D(t)    
 
   extension [T: ClassTag](t: T)
@@ -108,9 +113,7 @@ object ops extends genOps:
 
   extension [T: ClassTag: Numeric](pair: (Tensor[T], Tensor[T]))
     def map2[U: ClassTag: Numeric](f: (T, T) => U): Tensor[U] = 
-      TensorOps.map2(pair._1, pair._2, f)
-    def product(axis: Int)(f: (Tensor[T], Tensor[T], (List[Int], List[Int])) => Tensor[T]): Tensor[T] =
-      TensorOps.product(pair._1, pair._2, axis, f)
+      TensorOps.map2(pair._1, pair._2, f)  
 
     def split(
         fraction: Float
@@ -276,30 +279,24 @@ object TensorOps:
       case _ => 
         sys.error(s"Both tensors must have the same dimension: ${a.shape} != ${b.shape}")
 
-  def product[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T], axis: Int, 
-    f: (Tensor[T], Tensor[T], (List[Int], List[Int])) => Tensor[T]): Tensor[T] =    
-    assert(a.shape.length > axis, s"Left tensor shape has no axis '$axis'")
-    assert(b.shape.length > axis, s"Right tensor shape has no axis '$axis'")
+  // def product[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T], axis: Int, 
+  //   f: (Tensor[T], Tensor[T], (List[Int], List[Int])) => Tensor[T]): Tensor[T] =    
+  //   assert(a.shape.length > axis, s"Left tensor shape has no axis '$axis'")
+  //   assert(b.shape.length > axis, s"Right tensor shape has no axis '$axis'")
 
-    (a, b, axis) match
-      case (t1 @ Tensor4D(data), t2 @ Tensor4D(data2), 2) => // this code does not scale to any axis so far :-(
-        val (tensors1 :: cubes1 :: _ ) = a.shape
-        val (tensors2 :: cubes2 :: _ ) = b.shape
-        val res = Array.ofDim[T](tensors2, cubes2, 0, 0)
+  //   (a, b, axis) match
+  //     case (t1 @ Tensor3D(data), t2 @ Tensor4D(data2), 2) => // this code does not scale to any axis so far :-(
+  //       val (tensors1 :: cubes1 :: _ ) = a.shape
+  //       val (tensors2 :: cubes2 :: _ ) = b.shape
+        
+  //       val res = data.map { matrix => // channels                          
+  //         data2.zipWithIndex.map { (matrix2, i) => // filters                
+  //           TensorOps.as2D(f(Tensor2D(matrix), Tensor2D(matrix2), (Nil, List(0, i)))).data                
+  //         }            
+  //       }
+  //       Tensor4D(res.map(_.toArray).toArray)
 
-        for i1 <- 0 until tensors1 do
-          for j1 <- 0 until cubes1 do
-            val arg1 = Tensor2D(t1.data(i1)(j1))
-
-            for i2 <- 0 until tensors2 do
-              for j2 <- 0 until cubes2 do
-                val arg2 = Tensor2D(t2.data(i2)(j2))
-                val position = (List(i1, j1), List(i2, j2))
-                val resData = TensorOps.as2D(f(arg1, arg2, position)).data
-                res(i2)(j2) = resData              
-        Tensor4D(res.map(_.toArray).toArray)
-
-      case _ => notImplementedError(a :: b :: Nil)
+  //     case _ => notImplementedError(a :: b :: Nil)
     
   private def colsCount[T](a: Array[Array[T]]): Int =
     a.headOption.map(_.length).getOrElse(0)
@@ -355,6 +352,13 @@ object TensorOps:
       case t2 @ Tensor2D(_) => t2
       case _ => notImplementedError(t :: Nil)
   
+  def as3D[T: ClassTag](t: Tensor[T]): Tensor3D[T] =
+    t match
+      case Tensor0D(data)   => Tensor3D(Array(Array(Array(data))))
+      case Tensor2D(data)   => Tensor3D(Array(data))
+      case t1 @ Tensor3D(_) => t1
+      case _ => notImplementedError(t :: Nil)
+
   def as4D[T: ClassTag](t: Tensor[T]): Tensor4D[T] =
     t match
       case Tensor0D(data)   => Tensor4D(Array(Array(Array(Array(data)))))
