@@ -65,8 +65,8 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
         Array(5d, 6, 7, 3)
       )
     ))
-    val images = image1//Tensor4D(image1)//, image2)                
-    val inputShape = images.shape3D
+    val images = Tensor4D(image1, image2)                
+    val inputShape = images.shape4D
 
     val layer = Conv2D[Double](
       f = testActivation,
@@ -77,8 +77,8 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
 
     val a = layer(images)    
 
-    val (inputChannels, width, height) = inputShape
-    a.z.shape should ===(List(layer.filterCount, 2, 3))
+    val (imageCount, inputChannels, width, height) = inputShape
+    a.z.shape should ===(List(imageCount, layer.filterCount, 2, 3))
     val w = layer.w.getOrElse(fail("Weight must not be empty"))
     val b = layer.b.getOrElse(fail("Bias must not be empty"))  
 
@@ -99,21 +99,23 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
         rows += row.toArray  
       rows.toArray
 
-    def filterChannels[T: ClassTag : Numeric](filters: Tensor4D[T], image: Tensor3D[T]) =
-      filters.data.map { channels => 
-        channels.zip(image.data).map { (fc, ic) =>
-          filterChannel(ic, fc).as2D
-        }.reduce(_ + _)       
+    def filterChannels[T: ClassTag : Numeric](filters: Tensor4D[T], images: Tensor4D[T]) =
+      images.data.map { image => 
+        filters.data.map { channels => 
+          channels.zip(image).map { (fc, ic) =>
+            filterChannel(ic, fc).as2D
+          }.reduce(_ + _)       
+        }
       }
-
-    val expectedActivities = filterChannels(w.as4D, image1)
+      
+    val expectedActivities = filterChannels(w.as4D, images).as4D
             
-    val layerActivity = a.z.as3D.data    
-    layerActivity.zip(expectedActivities).foreach { (actual, expected) =>      
-      actual should ===(expected.data)      
+    val layerActivity = a.z.as4D.data    
+    layerActivity.zip(expectedActivities.data).foreach { (actual, expected) =>      
+      actual should ===(expected)      
     }
     
-    val expectedActivation = layer.f(expectedActivities.as3D)
-    a.a.as3D.data sameElements expectedActivation.as3D.data    
+    val expectedActivation = layer.f(expectedActivities)
+    a.a.as4D.data sameElements expectedActivation.as4D.data    
   }
 }

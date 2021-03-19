@@ -85,18 +85,20 @@ case class Conv2D[T: ClassTag: Numeric](
     Activation(x, z, a)
 
   private def conv(kernel: Int, stride: Int, bias: Tensor[T])(t1: Tensor[T], t2: Tensor[T]): Tensor[T] =
-    val image = t1.as3D
+    val images = t1.as4D
     val filter = t2.as4D
-    val (channels, rows, cols) = image.shape3D    
+    val (imageCount, channels, rows, cols) = images.shape4D      
 
-    val res = filter.data.zip(bias.as1D.data).map { (f, bias) =>      
-      val channels = f.zip(image.data).map { (fc, ic) =>
-        filterChannel(fc.as2D, ic.as2D, kernel, stride, rows, cols)
-      }.reduce(_ + _)
-      channels.map(_ + bias).as2D
-    }
-
-    Tensor3D(res: _*)        
+    def filterImage(image: Array[Array[Array[T]]]) =
+      filter.data.zip(bias.as1D.data).map { (f, bias) =>
+        val channels = f.zip(image).map { (fc, ic) =>
+          filterChannel(fc.as2D, ic.as2D, kernel, stride, rows, cols)
+        }.reduce(_ + _)
+        channels.map(_ + bias).as2D
+      }
+    
+    val res = images.data.map(filterImage)
+    res.as4D
   
   private def filterChannel(filterChannel: Tensor2D[T], imageChannel: Tensor2D[T], kernel: Int, stride: Int, rows: Int, cols: Int) = 
     val filtered = ListBuffer[Array[T]]()
