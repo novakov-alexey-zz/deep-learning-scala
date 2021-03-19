@@ -60,9 +60,9 @@ case class Conv2D[T: ClassTag: Numeric](
     optimizerParams: Option[OptimizerParams[T]] = None
 ) extends Layer[T]:
 
-  override def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Layer[T] =    
+  override def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Conv2D[T] =    
     val (width, height) = kernel
-    val channels = prevShape.drop(1).headOption.getOrElse(0) // take second axis as inputs    
+    val channels = prevShape.drop(1).headOption.getOrElse(0) // take axis '1' as inputs    
     val w = 
       (0 until filterCount)
         .map(_ =>  (0 until channels).toArray
@@ -88,26 +88,27 @@ case class Conv2D[T: ClassTag: Numeric](
     val image = t1.as3D
     val filter = t2.as4D
     val (channels, rows, cols) = image.shape3D    
-    val filterBiases = bias.as1D.data
 
-    val res = filter.data.zipWithIndex.map { (f, filterId) =>      
+    val res = filter.data.zip(bias.as1D.data).map { (f, bias) =>      
       val channels = f.zip(image.data).map { (fc, ic) =>
-        val filteredChannel = ListBuffer[Array[T]]()
-
-        for i <- 0 to rows - kernel by stride do
-          val row = ListBuffer.empty[T]
-          for j <- 0 to cols - kernel by stride do
-            val area = ic.slice(Some(i, i + kernel), Some(j, j + kernel)).as2D
-            row += (fc.as2D |*| area).sum
-          filteredChannel += row.toArray  
-
-        filteredChannel.toArray.as2D
+        filterChannel(fc.as2D, ic.as2D, kernel, stride, rows, cols)
       }.reduce(_ + _)
-
-      channels.map(_ + filterBiases(filterId)).as2D
+      channels.map(_ + bias).as2D
     }
 
     Tensor3D(res: _*)        
+  
+  private def filterChannel(filterChannel: Tensor2D[T], imageChannel: Tensor2D[T], kernel: Int, stride: Int, rows: Int, cols: Int) = 
+    val filtered = ListBuffer[Array[T]]()
+
+    for i <- 0 to rows - kernel by stride do
+      val row = ListBuffer.empty[T]
+      for j <- 0 to cols - kernel by stride do
+        val area = imageChannel.slice(Some(i, i + kernel), Some(j, j + kernel)).as2D
+        row += (filterChannel |*| area).sum
+      filtered += row.toArray  
+
+    filtered.toArray.as2D
 
   // backward  
   override def update(wGradient: Tensor[T], bGradient: Tensor[T], optimizerParams: Option[OptimizerParams[T]] = None): Layer[T] =
