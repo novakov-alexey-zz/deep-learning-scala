@@ -34,5 +34,29 @@ class MaxPoolTest extends AnyFlatSpec with Matchers {
     val a =l(image)
 
     a.z.as4D.data should ===(expected)
+
+    val prevDelta = Array(
+        Array (
+            Array(
+                Array(1d, 2, 3),
+                Array(7d, 1, 2),
+            )
+        )
+    )
+
+    val (w, b, delta) = l.backward(a, prevDelta.as4D, None)
+
+    delta.as4D.shape4D should ===(a.x.as4D.shape4D)
+    w should ===(None)
+    b should ===(None)
+    delta.as4D.data should ===(Array(
+        Array (
+            Array(
+                Array(0d, 0, 0, 0),
+                Array(0d, 1, 3, 0),
+                Array(0d, 7, 2, 0),
+            )
+        )
+    ))
   }
 }

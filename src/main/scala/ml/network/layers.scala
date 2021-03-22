@@ -211,7 +211,8 @@ case class MaxPool[T: ClassTag: Numeric](
     (max._2, max._3)
 
   def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): (Option[Tensor[T]], Option[Tensor[T]], Tensor[T]) = 
-    val delta = a.x.as4D.data.zip(prevDelta.as4D.data).map { (imageChannels, deltaChannels) =>
+    val image = a.x.as4D.data
+    val delta = image.zip(prevDelta.as4D.data).map { (imageChannels, deltaChannels) =>
       imageChannels.zip(deltaChannels).map { (ic, dc) =>
         val image = ic.as2D        
         val (rows, cols) = dc.as2D.shape2D
