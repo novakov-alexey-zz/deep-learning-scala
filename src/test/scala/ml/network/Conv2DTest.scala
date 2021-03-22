@@ -22,7 +22,7 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
   given testInit[T: Numeric: ClassTag]: ParamsInitializer[T, RandomUniform] with    
   
     def gen: T = 
-      summon[Numeric[T]].one
+      summon[Numeric[T]].fromInt(1)
 
     override def weights(rows: Int, cols: Int): Tensor2D[T] =
       Tensor2D(Array.fill(rows)(Array.fill[T](cols)(gen)))
@@ -30,7 +30,7 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
     override def biases(length: Int): Tensor1D[T] = 
       inits.zeros(length)
       
-  it should "apply convolution on input data" in {
+  it should "do forward propagation" in {
     val image1 = Tensor3D(Array(
       Array(
         Array(1d, 2, 3, 3), 
@@ -73,10 +73,10 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
       filterCount = 3,
       kernel = (2, 2),
       strides = (1, 1)
-    ).init(inputShape.toList, normal, adam)    
+    ).init(inputShape.toList, testInit, adam)    
 
     val a = layer(images)    
-
+    println(a)  
     val (imageCount, inputChannels, width, height) = inputShape
     a.z.shape should ===(List(imageCount, layer.filterCount, 2, 3))
     val w = layer.w.getOrElse(fail("Weight must not be empty"))
@@ -117,5 +117,54 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
     
     val expectedActivation = layer.f(expectedActivities)
     a.a.as4D.data sameElements expectedActivation.as4D.data    
+  }
+
+  ignore should "do backward propagation" in {
+    val image1 = Tensor3D(Array(
+      Array(
+        Array(1d, 2, 3, 3), 
+        Array(2d, 3, 4, 3), 
+        Array(5d, 6, 7, 3)
+      ),
+      Array(
+        Array(1d, 2, 3, 1), 
+        Array(2d, 3, 4, 1), 
+        Array(5d, 6, 7, 1)
+      ),
+      Array(
+        Array(1d, 2, 3, 2), 
+        Array(2d, 3, 4, 2), 
+        Array(5d, 6, 7, 2))))
+    val images = Tensor4D(image1)                
+    val inputShape = images.shape4D    
+    val layer = Conv2D[Double](
+      f = testActivation,
+      filterCount = 3,
+      kernel = (2, 2),
+      strides = (1, 1)
+    ).init(inputShape.toList, testInit, adam)
+
+    val a = layer(images)
+    println("w:\n" + layer.w)
+    println(s"a:\n${a.a}")
+    println(s"x:\n${a.x}")
+
+    val filterChannels = Array(
+        Array(
+          Array(2.0, 3.0),
+          Array(3.0, 4.0)
+        ), 
+        Array(
+          Array(3.0, 4.0), 
+          Array(6.0, 7.0)
+        ), 
+        Array(
+          Array(4.0, 3.0),           
+          Array(8.0, 3.0)
+      ))
+    val prevDelta = Tensor4D(Array.fill(layer.filterCount)(filterChannels))
+    println(s"prevDelta:\n$prevDelta")
+    val (wGrad, bGrad, delta) = layer.backward(a, prevDelta, None)
+    println(s"wGrad:\n$wGrad")
   }
 }

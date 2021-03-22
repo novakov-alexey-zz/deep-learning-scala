@@ -41,7 +41,8 @@ private trait genOps:
     def flatten: Tensor[T] = TensorOps.flatten(t)
     def diag: Tensor[T] = TensorOps.diag(t)
     def sumRows: Tensor[T] = TensorOps.sumRows(t)    
-    def sumCols: Tensor[T] = TensorOps.sumCols(t)    
+    def sumCols: Tensor[T] = TensorOps.sumCols(t)
+    def max: T = TensorOps.max(t)
  
   extension [T: ClassTag: Fractional](t: Tensor[T])
     def /(that: Tensor[T]): Tensor[T] = TensorOps.div(t, that)
@@ -61,10 +62,15 @@ object ops extends genOps:
       cols: Option[(Int, Int)]
     ): Tensor2D[T] =
       Tensor2D(t.data.slice(rows, cols))
+    def slice(
+      rows: (Int, Int),
+      cols: (Int, Int)
+    ): Tensor2D[T] =
+      Tensor2D(TensorOps.sliceArr(t.data, rows, cols))      
     
   extension [T: ClassTag: Numeric](t: Tensor2D[T])
     def |*|(that: Tensor2D[T]): Tensor2D[T] = TensorOps.multiply(t, that).asInstanceOf[Tensor2D[T]]
-    def +(that: Tensor2D[T]): Tensor2D[T] = TensorOps.plus(t, that).asInstanceOf[Tensor2D[T]]
+    def +(that: Tensor2D[T]): Tensor2D[T] = TensorOps.plus(t, that).asInstanceOf[Tensor2D[T]]    
 
   extension [T: ClassTag](t: Tensor[T])
     def as0D: Tensor0D[T] = TensorOps.as0D(t)    
@@ -278,25 +284,6 @@ object TensorOps:
         Tensor2D(res)
       case _ => 
         sys.error(s"Both tensors must have the same dimension: ${a.shape} != ${b.shape}")
-
-  // def product[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T], axis: Int, 
-  //   f: (Tensor[T], Tensor[T], (List[Int], List[Int])) => Tensor[T]): Tensor[T] =    
-  //   assert(a.shape.length > axis, s"Left tensor shape has no axis '$axis'")
-  //   assert(b.shape.length > axis, s"Right tensor shape has no axis '$axis'")
-
-  //   (a, b, axis) match
-  //     case (t1 @ Tensor3D(data), t2 @ Tensor4D(data2), 2) => // this code does not scale to any axis so far :-(
-  //       val (tensors1 :: cubes1 :: _ ) = a.shape
-  //       val (tensors2 :: cubes2 :: _ ) = b.shape
-        
-  //       val res = data.map { matrix => // channels                          
-  //         data2.zipWithIndex.map { (matrix2, i) => // filters                
-  //           TensorOps.as2D(f(Tensor2D(matrix), Tensor2D(matrix2), (Nil, List(0, i)))).data                
-  //         }            
-  //       }
-  //       Tensor4D(res.map(_.toArray).toArray)
-
-  //     case _ => notImplementedError(a :: b :: Nil)
     
   private def colsCount[T](a: Array[Array[T]]): Int =
     a.headOption.map(_.length).getOrElse(0)
@@ -548,6 +535,15 @@ object TensorOps:
         sliceArr(data, (rowsFrom, rowsTo))
       case _ => data
 
+  def sliceArr[T: ClassTag](
+      data: Array[Array[T]],
+      rows: (Int, Int),
+      cols: (Int, Int)
+  ): Array[Array[T]] = 
+    sliceArr(data, rows).map(a =>
+      sliceArr(a, cols)
+    )
+
   def sliceArr[T](
       data: Array[T],
       range: (Int, Int)
@@ -610,3 +606,11 @@ object TensorOps:
             res(i) = d(i)(j)
         Tensor1D(res)
       case _ => notImplementedError(t :: Nil)
+
+  def max[T: ClassTag: Numeric](t: Tensor[T]): T =
+    t match
+      case Tensor0D(d) => d
+      case Tensor1D(d) => d.max
+      case Tensor2D(d) => d.map(_.max).max
+      case Tensor3D(d) => d.map(_.map(_.max).max).max
+      case Tensor4D(d) => d.map(_.map(_.map(_.max).max).max).max

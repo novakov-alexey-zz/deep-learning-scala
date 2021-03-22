@@ -66,25 +66,25 @@ object optimizers:
           None: Option[Tensor[T]]          
         ) {             
             case (
-                  (layer, Activation(x, z, _)),
+                  (layer, a),
                   (ls, prevDelta, prevWeight)
-                ) =>            
-              val delta = (prevWeight match 
-                case Some(pw) => prevDelta * pw.T
-                case None     => prevDelta
-              ) multiply layer.f.derivative(z)        
-              val wGradient = c.clip(x.T * delta)
-              val bGradient = c.clip(delta).sum
+                ) =>                                        
+              val (wOpt, bOpt, delta) = layer.backward(a, prevDelta, prevWeight)
+              val updated = (wOpt, bOpt) match
+                case (Some(w), Some(b)) =>
+                  val wGradient = c.clip(w)
+                  val bGradient = c.clip(b).sum
               
-              // Adam                        
-              val updated = layer.optimizerParams match
-                case Some(AdamState(mw, vw, mb, vb)) =>
-                  val (corrW, weightM, weightV) = correction(wGradient, mw, vw)                  
-                  val (corrB, biasM, biasV) = correction(bGradient.asT, mb, vb)                  
-                  val adamState = Some(AdamState(weightM, weightV, biasM, biasV))
-                  layer.update(corrW, corrB, adamState)
-                case _ => layer
-              
+                  // Adam                        
+                  layer.optimizerParams match
+                    case Some(AdamState(mw, vw, mb, vb)) =>
+                      val (corrW, weightM, weightV) = correction(wGradient, mw, vw)                  
+                      val (corrB, biasM, biasV) = correction(bGradient.asT, mb, vb)                  
+                      val adamState = Some(AdamState(weightM, weightV, biasM, biasV))
+                      layer.update(corrW, corrB, adamState)
+                    case _ => layer // does nothing if Adam state is not set
+
+                case _ => layer // does nothing if one of the params is empty 
               (updated +: ls, delta, layer.w)                        
         }
         ._1.toList    
@@ -106,20 +106,19 @@ object optimizers:
           None: Option[Tensor[T]]
         ) {
           case (
-                (layer, Activation(x, z, _)),
+                (layer, a),
                 (ls, prevDelta, prevWeight)
               ) =>            
-            val delta = (prevWeight match 
-              case Some(pw) => prevDelta * pw.T
-              case None     => prevDelta
-            ) multiply layer.f.derivative(z)
-
-            val wGradient = cfg.clip(x.T * delta)
-            val bGradient = cfg.clip(delta).sum
-            val corrW = cfg.learningRate * wGradient
-            val corrB = cfg.learningRate * bGradient
-            val updated = layer.update(corrW, corrB.as0D) +: ls
-            (updated, delta, layer.w)
+            val (w, b, delta) = layer.backward(a, prevDelta, prevWeight) //TODO: merge backward and update method
+            val updated = (w, b) match
+              case (Some(w), Some(b)) =>
+                val wGradient = cfg.clip(w)
+                val bGradient = cfg.clip(b).sum
+                val corrW = cfg.learningRate * wGradient
+                val corrB = cfg.learningRate * bGradient
+                layer.update(corrW, corrB.as0D)
+              case _ => layer
+            (updated +: ls, delta, layer.w)
         }
         ._1.toList    
 

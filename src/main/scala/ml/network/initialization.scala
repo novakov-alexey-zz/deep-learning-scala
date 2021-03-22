@@ -2,6 +2,7 @@ package ml.network
 
 import ml.transformation.castFromTo
 import ml.tensors.api._
+import ml.tensors.ops.as4D
 
 import scala.reflect.ClassTag
 import java.util.Random
@@ -11,6 +12,9 @@ trait ParamsInitializer[A, B]:
   def weights(rows: Int, cols: Int): Tensor2D[A]
 
   def biases(length: Int): Tensor1D[A]
+  
+  def weights4D(tensors: Int, cubes: Int, rows: Int, cols: Int)(using c: ClassTag[A], n: Numeric[A]): Tensor4D[A] = 
+    (0 until tensors).map(_ =>  (0 until cubes).toArray.map(_ => weights(rows,  cols))).toArray.as4D    
 
 // support Initializers
 type RandomUniform
