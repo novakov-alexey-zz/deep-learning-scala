@@ -7,24 +7,35 @@ import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
 
+final case class Gradient[T](
+  delta: Tensor[T], 
+  w: Option[Tensor[T]] = None, 
+  b: Option[Tensor[T]] = None
+)
+
 trait Layer[T]:
-  val f: ActivationFunc[T] = ActivationFuncApi.linear
-  val w: Option[Tensor[T]]
-  val b: Option[Tensor[T]]
-  val shape: List[Int]
-  val optimizerParams: Option[OptimizerParams[T]]
+  val f: ActivationFunc[T] = ActivationFuncApi.linear  
+  val shape: List[Int]  
 
-  def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Layer[T]
-
+  def init[U, V](prevShape: List[Int]): Layer[T] = this
   def apply(x: Tensor[T]): Activation[T]
-
-  //TODO: bGradient model as Tensor[T] | T
-  def update(wGradient: Tensor[T], bGradient: Tensor[T], optimizerParams: Option[OptimizerParams[T]] = None): Layer[T]
-
-  def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): (Option[Tensor[T]], Option[Tensor[T]], Tensor[T])
+  def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T]
 
   override def toString() = 
-    s"\n(\nweight = $w,\nbias = $b,\nf = ${f.name},\nshape = $shape)"
+    s"\nf = ${f.name},\nshape = $shape"
+
+trait Optimizable[T] extends Layer[T]:
+  val w: Option[Tensor[T]]
+  val b: Option[Tensor[T]]
+  val optimizerParams: Option[OptimizerParams[T]]
+  
+  def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Layer[T]
+
+  //TODO: bGradient model as Tensor[T] | T
+  def update(wGradient: Tensor[T], bGradient: Tensor[T], optimizerParams: Option[OptimizerParams[T]] = None): Layer[T]  
+  
+  override def toString() = 
+    s"(${super.toString},\nweight = $w,\nbias = $b)"
 
 case class Dense[T: ClassTag: Numeric](
     override val f: ActivationFunc[T] = ActivationFuncApi.linear[T],
@@ -33,17 +44,18 @@ case class Dense[T: ClassTag: Numeric](
     w: Option[Tensor[T]] = None,
     b: Option[Tensor[T]] = None,
     optimizerParams: Option[OptimizerParams[T]] = None
-) extends Layer[T]:
+) extends Optimizable[T]:
 
   override def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Layer[T] =
     val inputs = prevShape.drop(1).reduce(_ * _)
     val w = initializer.weights(inputs,  units)
     val b = initializer.biases(units)
     val optimizerParams = optimizer.init(w, b)
+    println(s"Dense shape: ${List(inputs, units)}")
     copy(w = Some(w), b = Some(b), shape = List(inputs, units), optimizerParams = optimizerParams)
 
   override def apply(x: Tensor[T]): Activation[T] =    
-    val z = x * w + b
+    val z = x * w + b 
     val a = f(z)
     Activation(x, z, a)
 
@@ -52,8 +64,7 @@ case class Dense[T: ClassTag: Numeric](
     val updatedB = b.map(_ - bGradient)  
     copy(w = updatedW, b = updatedB, optimizerParams = optimizerParams)
 
-  override def backward(a: Activation[T], prevDelta: Tensor[T], prevWeight: Option[Tensor[T]]): 
-    (Option[Tensor[T]], Option[Tensor[T]], Tensor[T]) = 
+  override def backward(a: Activation[T], prevDelta: Tensor[T], prevWeight: Option[Tensor[T]]): Gradient[T] = 
     val delta = (prevWeight match 
       case Some(pw) => prevDelta * pw.T
       case None     => prevDelta
@@ -61,7 +72,7 @@ case class Dense[T: ClassTag: Numeric](
 
     val wGradient = Some(a.x.T * delta)
     val bGradient = Some(delta)
-    (wGradient, bGradient, delta)
+    Gradient(delta, wGradient, bGradient)
 
 case class Conv2D[T: ClassTag: Numeric](
     override val f: ActivationFunc[T],
@@ -72,15 +83,17 @@ case class Conv2D[T: ClassTag: Numeric](
     w: Option[Tensor[T]] = None,
     b: Option[Tensor[T]] = None,
     optimizerParams: Option[OptimizerParams[T]] = None
-) extends Layer[T]:
+) extends Optimizable[T]:
 
-  override def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Conv2D[T] =    
-    val (width, height) = kernel
-    val channels = prevShape.drop(1).headOption.getOrElse(0) // take axis '1' as inputs    
-    val w = initializer.weights4D(filterCount, channels, width, height)
+  override def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Conv2D[T] =        
+    val images :: channels :: height :: width :: _ = prevShape    
+    val w = initializer.weights4D(filterCount, channels, kernel._1, kernel._2)
     val b = initializer.biases(filterCount)
-    val optimizerParams = optimizer.init(w, b)    
-    val shape = List(filterCount, channels, width, height)
+    val optimizerParams = optimizer.init(w, b)        
+    val rows = (height - kernel._1) / strides._1 + 1
+    val cols = (width - kernel._2) / strides._2 + 1
+    val shape = List(images, filterCount, rows, cols)
+    println(s"Conv2D shape: $shape")
     copy(w = Some(w), b = Some(b), shape = shape, optimizerParams = optimizerParams)
   
   override def apply(x: Tensor[T]): Activation[T] =
@@ -144,8 +157,7 @@ case class Conv2D[T: ClassTag: Numeric](
 
     grad.reduce(_ + _).as2D
 
-  override def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): 
-    (Option[Tensor[T]], Option[Tensor[T]], Tensor[T]) =
+  override def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] =
     (w, b) match 
       case (Some(w), Some(b)) =>
         val prevLoss = prevDelta.as4D
@@ -170,9 +182,9 @@ case class Conv2D[T: ClassTag: Numeric](
           }
         }.as4D
 
-        (Some(wGradient), Some(wGradient), delta) //TODO: calc b grad
+        Gradient(delta, Some(wGradient), Some(wGradient)) //TODO: calc b grad
       case _ =>    
-        (None, None, prevDelta)
+        Gradient(prevDelta)
   
   override def update(wGradient: Tensor[T], bGradient: Tensor[T], optimizerParams: Option[OptimizerParams[T]] = None): Layer[T] =
     val updatedW = w.map(_ - wGradient)  
@@ -182,14 +194,16 @@ case class Conv2D[T: ClassTag: Numeric](
 case class MaxPool[T: ClassTag: Numeric](
     pool: (Int, Int) = (2, 2), 
     strides: (Int, Int) = (1, 1),     
-    shape: List[Int] = Nil, 
-    w: Option[Tensor[T]] = None,
-    b: Option[Tensor[T]] = None,
-    optimizerParams: Option[OptimizerParams[T]] = None
+    shape: List[Int] = Nil    
 ) extends Layer[T]: 
 
-  def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Layer[T] =
-    copy(shape = prevShape)
+  override def init[U, V](prevShape: List[Int]): Layer[T] =
+    val (a :: b :: rows :: cols :: Nil) = prevShape
+    val height = (rows - pool._1) / strides._1 + 1
+    val width = (cols - pool._2) / strides._2 + 1
+    val shape = List(a, b, height, width)
+    println(s"MaxPool shape: $shape")
+    copy(shape = shape)
 
   def apply(x: Tensor[T]): Activation[T] =    
     val pooled = x.as4D.data.map(_.map(c => poolMax(c.as2D))).as4D
@@ -203,14 +217,12 @@ case class MaxPool[T: ClassTag: Numeric](
       }
     }.map(_.toArray).toArray.as2D    
 
-  def update(wGradient: Tensor[T], bGradient: Tensor[T], optimizerParams: Option[OptimizerParams[T]] = None): Layer[T] = ???
-
   private def maxIndex(matrix: Tensor2D[T]): (Int, Int) =    
     val maxPerRow = matrix.data.zipWithIndex.map((row, i) => (row.max, i, row.indices.maxBy(row)))
     val max = maxPerRow.maxBy(_._1)
     (max._2, max._3)
 
-  def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): (Option[Tensor[T]], Option[Tensor[T]], Tensor[T]) = 
+  def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] = 
     val image = a.x.as4D.data
     val delta = image.zip(prevDelta.as4D.data).map { (imageChannels, deltaChannels) =>
       imageChannels.zip(deltaChannels).map { (ic, dc) =>
@@ -228,4 +240,18 @@ case class MaxPool[T: ClassTag: Numeric](
         out
       }
     }
-    (None, None, delta.as4D)    
+    Gradient(delta.as4D)    
+
+case class Flatten[T: ClassTag](shape: List[Int] = Nil) extends Layer[T]:
+
+  override def init[U, V](prevShape: List[Int]): Layer[T] =
+    val (head :: tail ) = prevShape
+    val shape = List(head, tail.reduce(_ * _))
+    copy(shape = shape)
+
+  def apply(x: Tensor[T]): Activation[T] =
+    val flat = x.as2D
+    Activation(x, x, flat)
+
+  def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] = 
+    Gradient(prevDelta)

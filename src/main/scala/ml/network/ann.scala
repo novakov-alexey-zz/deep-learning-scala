@@ -78,8 +78,11 @@ case class Sequential[T: ClassTag: Fractional, U, V](
   def add(layer: Layer[T]): Sequential[T, U, V] =
     copy(layerStack = inputShape => 
       val currentLayers = layerStack(inputShape)
-      val prevShape = currentLayers.lastOption.map(_.shape).getOrElse(inputShape)      
-      (currentLayers :+ layer.init(prevShape, initializer, optimizer))
+      val prevShape = currentLayers.lastOption.map(_.shape).getOrElse(inputShape)
+      val l = layer match
+        case o: Optimizable[_] => o.init(prevShape, initializer, optimizer)
+        case _ => layer.init(prevShape)
+      (currentLayers :+ l)
     )
 
   private def trainEpoch(

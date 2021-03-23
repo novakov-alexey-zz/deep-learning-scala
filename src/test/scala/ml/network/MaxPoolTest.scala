@@ -6,9 +6,6 @@ import ml.tensors.ops._
 import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
 
-import optimizers.given_Optimizer_Adam as adam
-import inits.given_ParamsInitializer_T_HeNormal as normal
-
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -30,7 +27,7 @@ class MaxPoolTest extends AnyFlatSpec with Matchers {
             )
         )
     )
-    val l = MaxPool[Double]().init(List(1, 3, 2, 3), normal, adam)
+    val l = MaxPool[Double]().init(List(1, 3, 2, 3))
     val a =l(image)
 
     a.z.as4D.data should ===(expected)
@@ -44,7 +41,7 @@ class MaxPoolTest extends AnyFlatSpec with Matchers {
         )
     )
 
-    val (w, b, delta) = l.backward(a, prevDelta.as4D, None)
+    val Gradient(delta, w, b) = l.backward(a, prevDelta.as4D, None)
 
     delta.as4D.shape4D should ===(a.x.as4D.shape4D)
     w should ===(None)

@@ -69,23 +69,24 @@ object optimizers:
                   (layer, a),
                   (ls, prevDelta, prevWeight)
                 ) =>                                        
-              val (wOpt, bOpt, delta) = layer.backward(a, prevDelta, prevWeight)
-              val updated = (wOpt, bOpt) match
-                case (Some(w), Some(b)) =>
+              val Gradient(delta, wOpt, bOpt) = layer.backward(a, prevDelta, prevWeight)
+              val (updated, weight) = (layer, wOpt, bOpt) match
+                case (o: Optimizable[T], Some(w), Some(b)) =>
                   val wGradient = c.clip(w)
                   val bGradient = c.clip(b).sum
-              
+                                
                   // Adam                        
-                  layer.optimizerParams match
+                  o.optimizerParams match
                     case Some(AdamState(mw, vw, mb, vb)) =>
                       val (corrW, weightM, weightV) = correction(wGradient, mw, vw)                  
                       val (corrB, biasM, biasV) = correction(bGradient.asT, mb, vb)                  
                       val adamState = Some(AdamState(weightM, weightV, biasM, biasV))
-                      layer.update(corrW, corrB, adamState)
-                    case _ => layer // does nothing if Adam state is not set
-
-                case _ => layer // does nothing if one of the params is empty 
-              (updated +: ls, delta, layer.w)                        
+                      (o.update(corrW, corrB, adamState), o.w)                    
+                    case _ => 
+                      (layer, None) // does nothing if Adam state is not set
+                case _ => 
+                  (layer, None) // does nothing if one of the params is empty 
+              (updated +: ls, delta, weight)                        
         }
         ._1.toList    
 
@@ -109,16 +110,17 @@ object optimizers:
                 (layer, a),
                 (ls, prevDelta, prevWeight)
               ) =>            
-            val (w, b, delta) = layer.backward(a, prevDelta, prevWeight) //TODO: merge backward and update method
-            val updated = (w, b) match
-              case (Some(w), Some(b)) =>
+            val Gradient(delta, w, b) = layer.backward(a, prevDelta, prevWeight)
+            val (updated, weight) = (layer, w, b) match
+              case (o: Optimizable[T], Some(w), Some(b)) =>
                 val wGradient = cfg.clip(w)
                 val bGradient = cfg.clip(b).sum
                 val corrW = cfg.learningRate * wGradient
                 val corrB = cfg.learningRate * bGradient
-                layer.update(corrW, corrB.as0D)
-              case _ => layer
-            (updated +: ls, delta, layer.w)
+                (o.update(corrW, corrB.as0D), o.w)
+              case _ => 
+                (layer, None)
+            (updated +: ls, delta, weight)
         }
         ._1.toList    
 

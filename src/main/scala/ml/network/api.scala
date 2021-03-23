@@ -10,8 +10,12 @@ object api:
   final type HeNormal = ml.network.HeNormal
   
   export ml.network.Dense
+  export ml.network.Conv2D
+  export ml.network.MaxPool
+  export ml.network.Flatten
   export ml.network.optimizers.given
   export ml.network.Layer
+  export ml.network.Optimizable
   export ml.network.Sequential
   export ml.network.Model
   export ml.network.GradientClippingApi.*
@@ -21,3 +25,4 @@ object api:
   export ml.network.ActivationFuncApi.*
   export ml.network.ParamsInitializer
   export ml.network.inits.given
+  export ml.network.inits

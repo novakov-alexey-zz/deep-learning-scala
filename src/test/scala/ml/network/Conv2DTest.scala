@@ -19,10 +19,8 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
       override def derivative(x: Tensor[T]): Tensor[T] = apply(x)
       override val name = "test"
 
-  given testInit[T: Numeric: ClassTag]: ParamsInitializer[T, RandomUniform] with    
-  
-    def gen: T = 
-      summon[Numeric[T]].fromInt(1)
+  given testInit[T: ClassTag](using n: Numeric[T]): ParamsInitializer[T, RandomUniform] with    
+    def gen: T = n.one
 
     override def weights(rows: Int, cols: Int): Tensor2D[T] =
       Tensor2D(Array.fill(rows)(Array.fill[T](cols)(gen)))
@@ -164,7 +162,7 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
       ))
     val prevDelta = Tensor4D(Array.fill(layer.filterCount)(filterChannels))
     println(s"prevDelta:\n$prevDelta")
-    val (wGrad, bGrad, delta) = layer.backward(a, prevDelta, None)
+    val Gradient(delta, wGrad, bGrad) = layer.backward(a, prevDelta, None)
     println(s"wGrad:\n$wGrad")
   }
 }

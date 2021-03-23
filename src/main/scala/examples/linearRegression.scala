@@ -73,9 +73,11 @@ def lrTest(fromTest: Boolean = true) =
     //gradient
     val gradientData = model.history.layers.zip(model.history.losses)
         .map { (layers, loss) => 
-          layers.headOption.map(l => 
-            List(l.w.as1D.data.head.toString, l.b.as1D.data.head.toString)
-          ).toList.flatten :+ loss.toString
+          layers.headOption.collect {
+            case l @ Dense(_, _, _ , Some(w), Some(b), _) =>               
+              List(w.as1D.data.head.toString, b.as1D.data.head.toString)
+            case _ => Nil
+          }.toList.flatten :+ loss.toString
         }
 
     store(s"metrics/$optimizer-gradient.csv", "w,b,loss", gradientData)

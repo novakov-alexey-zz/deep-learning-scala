@@ -336,7 +336,8 @@ object TensorOps:
     t match
       case Tensor0D(data)   => Tensor2D(Array(Array(data)))
       case Tensor1D(data)   => Tensor2D(data.map(Array(_)))
-      case t2 @ Tensor2D(_) => t2
+      case t1 @ Tensor2D(_) => t1
+      case t1 @ Tensor4D(data) => Tensor2D(data.map(_.map(_.flatten).flatten))
       case _ => notImplementedError(t :: Nil)
   
   def as3D[T: ClassTag](t: Tensor[T]): Tensor3D[T] =
@@ -453,7 +454,7 @@ object TensorOps:
       case Tensor1D(data) => data.grouped(batchSize).map(Tensor1D(_))
       case Tensor2D(data) => data.grouped(batchSize).map(Tensor2D(_))
       case Tensor3D(data) => data.grouped(batchSize).map(Tensor3D(_))
-      case _ => notImplementedError(t :: Nil)
+      case Tensor4D(data) => data.grouped(batchSize).map(Tensor4D(_))
 
   def equalRows[T: ClassTag](t1: Tensor[T], t2: Tensor[T]): Int = 
     assert(t1.shape == t2.shape, sys.error(s"Tensors must have the same shape: ${t1.shape} != ${t2.shape}"))
@@ -553,6 +554,8 @@ object TensorOps:
     val to = if r < 0 then data.length + r else if r == 0 then data.length else r
     data.slice(from, to)
 
+  // returns max index per array
+  // for 2D Tensor: returns an array of indices where every element is a max index for a specific row  
   def argMax[T: ClassTag](t: Tensor[T])(using n: Numeric[T]) =
     def maxIndex(a: Array[T]) = 
       n.fromInt(a.indices.maxBy(a))

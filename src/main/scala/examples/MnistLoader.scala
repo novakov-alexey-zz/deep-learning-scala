@@ -64,11 +64,6 @@ object MnistLoader:
       val (nRows, nCols) =
         (imageInputStream.readInt(), imageInputStream.readInt())
 
-      // println("magic number: " + magicNumber)
-      // println("number of items: " + numberOfItems)
-      // println("number of rows: " + nRows)
-      // println("number of cols: " + nCols)
-
       Using.resource(
         new DataInputStream(        
           new GZIPInputStream(Files.newInputStream(labels))          
@@ -81,9 +76,6 @@ object MnistLoader:
         )
 
         val numberOfLabels = labelInputStream.readInt()
-
-        // println(s"labels magic number: $labelMagicNumber")
-        // println(s"number of labels: $numberOfLabels")
 
         assert(
           numberOfImages == numberOfLabels,
