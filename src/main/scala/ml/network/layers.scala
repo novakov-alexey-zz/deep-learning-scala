@@ -164,15 +164,23 @@ case class Conv2D[T: ClassTag: Numeric](
         val x = a.x.as4D        
         val (_, _, rows, cols) = x.shape4D
       
-        val wGradient = x.data.map { image =>
-          prevLoss.data.map { lossChannels =>
-            val channels = lossChannels.zip(image).map { (lc, ic) =>
-              calcGradient(lc.as2D, ic.as2D, kernel._1, strides._1)
-            }.reduce(_ + _)
-            channels
+        println(s"prevDelta: ${prevDelta.shape}") // 1, 3, 2, 3
+        println(s"x: ${ x.shape}") // 1, 3, 3, 4
+        val oneImageDelta = prevLoss.data.head
+        val oneImage = x.data.head
+
+        val wGradient = oneImage.map { lossChannels =>
+          oneImage.map { ic =>          
+            calcGradient(lossChannels.as2D, ic.as2D,  kernel._1, strides._1)          
           }
         }.as4D
             
+        val bGradient = prevLoss.data.map { channels =>
+          channels.map { image =>
+            image.as2D.sum
+          }
+        }.as2D
+
         val delta = w.as4D.data.map { channels =>          
           prevLoss.data.map { lossChannels =>
             val r = lossChannels.zip(channels).map { (lc, fc) =>
@@ -182,7 +190,7 @@ case class Conv2D[T: ClassTag: Numeric](
           }
         }.as4D
 
-        Gradient(delta, Some(wGradient), Some(wGradient)) //TODO: calc b grad
+        Gradient(delta, Some(wGradient), Some(bGradient))
       case _ =>    
         Gradient(prevDelta)
   
@@ -242,16 +250,24 @@ case class MaxPool[T: ClassTag: Numeric](
     }
     Gradient(delta.as4D)    
 
-case class Flatten[T: ClassTag](shape: List[Int] = Nil) extends Layer[T]:
+case class Flatten2D[T: ClassTag: Numeric](  
+  shape: List[Int] = Nil,
+  prevShape: List[Int] = Nil
+) extends Layer[T]:
 
   override def init[U, V](prevShape: List[Int]): Layer[T] =
     val (head :: tail ) = prevShape
     val shape = List(head, tail.reduce(_ * _))
-    copy(shape = shape)
+    copy(shape = shape, prevShape = prevShape)
 
   def apply(x: Tensor[T]): Activation[T] =
     val flat = x.as2D
+    println(s"flat:\n$flat")
     Activation(x, x, flat)
 
-  def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] = 
-    Gradient(prevDelta)
+  def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] =     
+    val (filters :: rows :: cols :: _) = prevShape.drop(1)
+    val unflatten = prevDelta.as2D.data
+      .flatMap(_.grouped(cols).toArray.grouped(rows).toArray.grouped(filters).toArray) //TODO: replace with some reshape method
+      .as4D    
+    Gradient(unflatten)

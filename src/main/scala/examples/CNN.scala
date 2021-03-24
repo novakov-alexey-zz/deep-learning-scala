@@ -32,7 +32,7 @@ import scala.reflect.ClassTag
     override def biases(length: Int): Tensor1D[T] = 
       inits.zeros(length)
 
-  val cnn = Sequential[Double, Adam, TestInit](
+  val cnn = Sequential[Double, StandardGD, TestInit](
     crossEntropy,
     learningRate = 0.001,
     metrics = List(accuracy),
@@ -41,7 +41,7 @@ import scala.reflect.ClassTag
   )
     .add(Conv2D(relu, 3))      
     .add(MaxPool())       
-    .add(Flatten())
+    .add(Flatten2D())
     .add(Dense(relu, 6))      
     .add(Dense(softmax, 10))
 

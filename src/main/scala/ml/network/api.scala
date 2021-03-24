@@ -12,7 +12,7 @@ object api:
   export ml.network.Dense
   export ml.network.Conv2D
   export ml.network.MaxPool
-  export ml.network.Flatten
+  export ml.network.Flatten2D
   export ml.network.optimizers.given
   export ml.network.Layer
   export ml.network.Optimizable

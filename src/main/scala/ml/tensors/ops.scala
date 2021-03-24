@@ -137,28 +137,39 @@ object TensorOps:
       case (Tensor1D(data), Tensor1D(data2)) =>        
         checkShapeEquality(a, b)        
         Tensor1D(data.zip(data2).map(_ - _))
-      case (t1 @ Tensor2D(data), t2 @ Tensor2D(data2)) =>
-        val (rows, cols) = t1.shape2D
-        val (rows2, cols2) = t2.shape2D        
-        checkShapeEquality(a, b)
-        
-        val res = Array.ofDim[T](rows, cols)
-        for i <- data.indices do
-          for j <- 0 until cols do
-            res(i)(j) = data(i)(j) - data2(i)(j)
-        Tensor2D(res)
-      case (Tensor2D(data), Tensor0D(data2)) =>
+      case (Tensor2D(data), Tensor2D(data2)) =>        
+        checkShapeEquality(a, b)    
+        Tensor2D(matrixMinusMatrix(data, data2))
+      case (Tensor2D(data), Tensor0D(data2)) => // broadcasting
         Tensor2D(data.map(_.map(_ - data2)))
-      case (Tensor0D(data), Tensor2D(data2)) =>
+      case (Tensor0D(data), Tensor2D(data2)) => // broadcasting
         Tensor2D(data2.map(_.map(v => data - v)))
-      case (Tensor1D(data), Tensor0D(data2)) =>
+      case (Tensor1D(data), Tensor0D(data2)) => // broadcasting
         Tensor1D(data.map(_ - data2))
-      case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) =>
-        matrixSubstractVector(t1, t2)
+      case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) => // broadcasting
+        matrixMinustVector(t1, t2)
+      case (Tensor4D(data), Tensor4D(data2)) =>
+        checkShapeEquality(a, b)
+        val res = data.zip(data2).map { (cubes, cubes2) =>
+          cubes.zip(cubes2).map { (mat1, mat2) =>
+            matrixMinusMatrix(mat1, mat2)
+          }
+        }
+        Tensor4D(res)
       case (t1, t2) => 
         sys.error(s"Not implemented for\n$t1 and\n$t2")
 
-  private def matrixSubstractVector[T: Numeric: ClassTag](
+  private def matrixMinusMatrix[T: ClassTag: Numeric](a: Array[Array[T]], b: Array[Array[T]]): Array[Array[T]] =
+    val rows = a.length
+    val cols = a.headOption.map(_.length).getOrElse(0)
+    val res = Array.ofDim[T](rows, cols)
+
+    for i <- a.indices do
+      for j <- 0 until cols do
+        res(i)(j) = a(i)(j) - b(i)(j)
+    res
+        
+  private def matrixMinustVector[T: Numeric: ClassTag](
       matrix: Tensor2D[T],
       vector: Tensor1D[T]
   ) =
@@ -296,6 +307,7 @@ object TensorOps:
       case Tensor0D(data) => Tensor0D(data * scalar)
       case Tensor1D(data) => Tensor1D(data.map(_ * scalar))
       case Tensor2D(data) => Tensor2D(data.map(_.map(_ * scalar)))
+      case Tensor4D(data) => Tensor4D(data.map(_.map(_.map(_.map(_ * scalar)))))
       case _ => notImplementedError(t :: Nil)
 
   private def matMul[T: ClassTag](
