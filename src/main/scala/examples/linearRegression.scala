@@ -17,7 +17,7 @@ import java.io.{File,PrintWriter}
 @main def linearRegression() = lrTest(false)
 
 def lrTest(fromTest: Boolean = true) =   
-  val random = new Random(100)
+  val random = new Random()
   val weight = random.nextFloat()
   val bias = random.nextFloat()
 
