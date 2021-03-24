@@ -73,13 +73,13 @@ object optimizers:
               val (updated, weight) = (layer, wOpt, bOpt) match
                 case (o: Optimizable[T], Some(w), Some(b)) =>
                   val wGradient = c.clip(w)
-                  val bGradient = c.clip(b).sum
+                  val bGradient = c.clip(b).sumRows / n.fromInt(b.length).as0D
                                 
                   // Adam                        
                   o.optimizerParams match
                     case Some(AdamState(mw, vw, mb, vb)) =>
                       val (corrW, weightM, weightV) = correction(wGradient, mw, vw)                  
-                      val (corrB, biasM, biasV) = correction(bGradient.asT, mb, vb)                  
+                      val (corrB, biasM, biasV) = correction(bGradient, mb, vb)                  
                       val adamState = Some(AdamState(weightM, weightV, biasM, biasV))
                       (o.update(corrW, corrB, adamState), o.w)                    
                     case _ => 
@@ -114,7 +114,7 @@ object optimizers:
             val (updated, weight) = (layer, w, b) match
               case (o: Optimizable[T], Some(w), Some(b)) =>
                 val wGradient = cfg.clip(w)
-                val bGradient = cfg.clip(b).sum
+                val bGradient = cfg.clip(b).sumRows / n.fromInt(b.length).as0D
                 val corrW = cfg.learningRate * wGradient
                 val corrB = cfg.learningRate * bGradient
                 (o.update(corrW, corrB.as0D), o.w)
