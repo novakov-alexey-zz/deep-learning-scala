@@ -1,4 +1,4 @@
-package ml.tensors
+package ml.tensors.api
 
 import scala.reflect.ClassTag
 
@@ -36,7 +36,7 @@ extension [T: ClassTag: Numeric](a: NDArray[T])
   def reshape(shape: Int*): NDArray[T] =
     val newShape = shape.toList
     assert(a.shape.reduce(_ * _) == newShape.reduce(_ * _), s"Current shape ${a.shape} does not fit new shape = $shape")
-    def group(ar: Array[Any], shape: List[Int]): Array[Any] = 
+    def group(ar: Array[Any], shape: List[Int]): Array[Any] =
       shape match
         case h :: Nil => ar.grouped(h).toArray
         case h :: t => group(ar.grouped(h).toArray, t)
