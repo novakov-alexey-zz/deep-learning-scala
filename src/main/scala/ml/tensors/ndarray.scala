@@ -36,6 +36,8 @@ extension [T: ClassTag: Numeric](a: NDArray[T])
   def reshape(shape: Int*): NDArray[T] =
     val newShape = shape.toList
     assert(a.shape.reduce(_ * _) == newShape.reduce(_ * _), s"Current shape ${a.shape} does not fit new shape = $shape")
+    
+    @annotation.tailrec
     def group(ar: Array[Any], shape: List[Int]): Array[Any] =
       shape match
         case h :: Nil => ar.grouped(h).toArray
