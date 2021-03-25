@@ -16,7 +16,7 @@ type Stub
 trait Optimizer[U]:
 
   def updateWeights[T: ClassTag](
-      weights: List[Layer[T]],
+      layers: List[Layer[T]],
       activations: List[Activation[T]],
       error: Tensor[T],
       cfg: OptimizerCfg[T],
@@ -117,7 +117,7 @@ object optimizers:
                 val bGradient = cfg.clip(b).sumRows / n.fromInt(b.length).as0D
                 val corrW = cfg.learningRate * wGradient
                 val corrB = cfg.learningRate * bGradient
-                (o.update(corrW, corrB.as0D), o.w)
+                (o.update(corrW, corrB.as0D), o.w) //TODO: is corrB always scalar?
               case _ => 
                 (layer, None)
             (updated +: ls, delta, weight)
