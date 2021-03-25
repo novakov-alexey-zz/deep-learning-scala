@@ -15,6 +15,7 @@ private trait genOps:
     // dot product    
     def *(that: Tensor[T]): Tensor[T] = TensorOps.mul(t, that)    
     def *(that: Option[Tensor[T]]): Tensor[T] = TensorOps.optMul(t, that)    
+    def *(that: T): Tensor[T] = TensorOps.mul(t, Tensor0D(that))
     def -(that: T): Tensor[T] = TensorOps.subtract(t, Tensor0D(that))
     def -(that: Tensor[T]): Tensor[T] = TensorOps.subtract(t, that)
     def +(that: Tensor[T]): Tensor[T] = TensorOps.plus(t, that)    
@@ -70,7 +71,7 @@ object ops extends genOps:
     
   extension [T: ClassTag: Numeric](t: Tensor2D[T])
     def |*|(that: Tensor2D[T]): Tensor2D[T] = TensorOps.multiply(t, that).asInstanceOf[Tensor2D[T]]
-    def +(that: Tensor2D[T]): Tensor2D[T] = TensorOps.plus(t, that).asInstanceOf[Tensor2D[T]]    
+    def +(that: Tensor[T]): Tensor2D[T] = TensorOps.plus(t, that).asInstanceOf[Tensor2D[T]]    
 
   extension [T: ClassTag](t: Tensor[T])
     def as0D: Tensor0D[T] = TensorOps.as0D(t)    
@@ -100,6 +101,9 @@ object ops extends genOps:
   
   extension [T: ClassTag: Numeric](a: Array[Array[T]])
     def as2D: Tensor2D[T] = Tensor2D(a)
+  
+  extension [T: ClassTag: Numeric](a: IndexedSeq[IndexedSeq[T]])
+    def as2D: Tensor2D[T] = Tensor2D(a.map(_.toArray).toArray)
   
   extension [T: ClassTag: Numeric](a: Array[Tensor2D[T]])
     def as3D: Tensor3D[T] = Tensor3D(a:_*)
