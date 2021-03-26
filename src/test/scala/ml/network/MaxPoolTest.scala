@@ -10,28 +10,19 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 class MaxPoolTest extends AnyFlatSpec with Matchers {
-  it should "do forward and backward propagation" in {
-    val image = Tensor4D(
+  val image = Tensor4D(
+    Array(
       Array(
         Array(
-          Array(
-            Array(1d, 2, 3, 3),
-            Array(2d, 3, 4, 3),
-            Array(5d, 6, 7, 3)
-          )
+          Array(1d, 2, 3, 3),
+          Array(2d, 3, 4, 3),
+          Array(5d, 6, 7, 3)
         )
       )
     )
-    val padded = Array(
-      Array(
-        Array(
-          Array(3d, 4, 4, 3),
-          Array(6d, 7, 7, 3),
-          Array(6d, 7, 7, 3)
-        )
-      )
-    )
+  )
 
+  it should "do forward and backward propagation without padding" in {
     val unpadded = Array(
       Array(
         Array(
@@ -42,16 +33,53 @@ class MaxPoolTest extends AnyFlatSpec with Matchers {
     )
 
     // FORWARD
-    val prevShape = List(1, 1, 3, 4)
     // given
-    val unpaddedLayer = MaxPool[Double](padding = false).init(prevShape)
+    val noPaddingLayer = MaxPool[Double](padding = false).init(image.shape)
     // when
-    val unpaddedPooling = unpaddedLayer(image).z.as4D
+    val noPaddingAct = noPaddingLayer(image)
     // then
-    unpaddedPooling.shape should ===(unpaddedLayer.shape)
+    val z = noPaddingAct.z.as4D
+    z.shape should ===(noPaddingLayer.shape)
+    z.data should ===(unpadded)
 
+    val unpaddedDelta = Array(
+      Array(
+        Array(
+          Array(1d, 2, 3),
+          Array(7d, 1, 2)
+        )
+      )
+    )
+
+    val Gradient(unpaddedNextDelta, _, _) =
+      noPaddingLayer.backward(noPaddingAct, unpaddedDelta.as4D, None)
+
+    unpaddedNextDelta.as4D.data should ===(
+      Array(
+        Array(
+          Array(
+            Array(0d, 0, 0, 0),
+            Array(0d, 1, 3, 0),
+            Array(0d, 7, 2, 0)
+          )
+        )
+      )
+    )
+  }
+
+  it should "do forward propagation with padding" in {
+    // Padding
     // given
-    val paddedLayer = MaxPool[Double](padding = true).init(prevShape)
+    val padded = Array(
+      Array(
+        Array(
+          Array(3d, 4, 4, 3),
+          Array(6d, 7, 7, 3),
+          Array(6d, 7, 7, 3)
+        )
+      )
+    )
+    val paddedLayer = MaxPool[Double](padding = true).init(image.shape)
     // when
     val a = paddedLayer(image)
 
