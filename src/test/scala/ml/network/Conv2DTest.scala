@@ -29,6 +29,7 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
       inits.zeros(length)
       
   it should "do forward propagation" in {
+    // given
     val image1 = Tensor3D(Array(
       Array(
         Array(1d, 2, 3, 3), 
@@ -62,7 +63,7 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
         Array(2d, 3, 4, 3), 
         Array(5d, 6, 7, 3)
       )
-    ))
+    ))    
     val images = Tensor4D(image1, image2)                
     val inputShape = images.shape4D
 
@@ -72,10 +73,12 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
       kernel = (2, 2),
       strides = (1, 1)
     ).init(inputShape.toList, testInit, adam)    
-
+    
+    // when
     val a = layer(images)    
-    println(a)  
     val (imageCount, inputChannels, width, height) = inputShape
+
+    // then
     a.z.shape should ===(List(imageCount, layer.filterCount, 2, 3))
     val w = layer.w.getOrElse(fail("Weight must not be empty"))
     val b = layer.b.getOrElse(fail("Bias must not be empty"))  
@@ -143,26 +146,26 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
     ).init(inputShape.toList, testInit, adam)
 
     val a = layer(images)
-    println("w:\n" + layer.w)
-    println(s"a:\n${a.a}")
-    println(s"x:\n${a.x}")
+    // println("w:\n" + layer.w)
+    // println(s"a:\n${a.a}")
+    // println(s"x:\n${a.x}")
 
     val filterChannels = Array(
         Array(
-          Array(2.0, 3.0),
-          Array(3.0, 4.0)
+          Array(2.0, 3.0, 1),
+          Array(3.0, 4.0, 2)
         ), 
         Array(
-          Array(3.0, 4.0), 
-          Array(6.0, 7.0)
+          Array(3.0, 4.0, 2), 
+          Array(6.0, 7.0, 2)
         ), 
         Array(
-          Array(4.0, 3.0),           
-          Array(8.0, 3.0)
+          Array(4.0, 3.0, 3),           
+          Array(8.0, 3.0, 4)
       ))
     val prevDelta = Tensor4D(Array.fill(layer.filterCount)(filterChannels))
-    println(s"prevDelta:\n$prevDelta")
+    // println(s"prevDelta:\n$prevDelta")
     val Gradient(delta, wGrad, bGrad) = layer.backward(a, prevDelta, None)
-    println(s"wGrad:\n$wGrad")
+    // println(s"wGrad:\n$wGrad")
   }
 }

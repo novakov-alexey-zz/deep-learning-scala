@@ -162,9 +162,7 @@ case class Conv2D[T: ClassTag: Numeric](
     (w, b) match 
       case (Some(w), Some(b)) =>
         val prevLoss = prevDelta.as4D
-        val x = a.x.as4D                
-      
-        //val oneLoss = prevLoss.data.head
+        val x = a.x.as4D                            
         val oneImage = x.data.head
 
         val wGradient = prevLoss.data.map { lossChannels =>
