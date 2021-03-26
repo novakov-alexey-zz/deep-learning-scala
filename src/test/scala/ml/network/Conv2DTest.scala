@@ -117,7 +117,7 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
     a.a.as4D.data sameElements expectedActivation.as4D.data    
   }
 
-  ignore should "do backward propagation" in {
+  it should "do backward propagation" in {
     val image1 = Tensor3D(Array(
       Array(
         Array(1d, 2, 3, 3), 

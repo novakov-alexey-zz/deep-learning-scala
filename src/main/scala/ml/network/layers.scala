@@ -102,12 +102,12 @@ case class Conv2D[T: ClassTag: Numeric](
   
   override def apply(x: Tensor[T]): Activation[T] =
     val z = (w, b) match
-      case (Some(weights), Some(biases)) => forward(kernel._1, strides._1, biases)(x, weights)
+      case (Some(w), Some(b)) => forward(kernel._1, strides._1, b, x, w)
       case _ => x // does nothing when one the params is empty    
     val a = f(z)    
     Activation(x, z, a)
 
-  private def forward(kernel: Int, stride: Int, bias: Tensor[T])(x: Tensor[T], w: Tensor[T]): Tensor[T] =
+  private def forward(kernel: Int, stride: Int, bias: Tensor[T], x: Tensor[T], w: Tensor[T]): Tensor[T] =
     val (images, filters) = (x.as4D, w.as4D)    
     
     def filterImage(image: Array[Array[Array[T]]]) =
@@ -115,7 +115,7 @@ case class Conv2D[T: ClassTag: Numeric](
         val filtered = f.zip(image).map { (fc, ic) =>
           conv(fc.as2D, ic.as2D, kernel, stride)
         }.reduce(_ + _)
-        (filtered + bias.asT).as2D
+        filtered + bias.asT
       }
     
     images.data.map(filterImage).as4D    
@@ -203,17 +203,18 @@ case class MaxPool[T: ClassTag: Numeric](
     pool: (Int, Int) = (2, 2), 
     strides: (Int, Int) = (1, 1),     
     shape: List[Int] = Nil,
-    padding: Boolean = true    
+    shape2D: (Int, Int) = (0, 0),
+    padding: Boolean = true
 ) extends Layer[T]: 
 
   override def init[U, V](prevShape: List[Int]): Layer[T] =
-    val (a :: b :: rows :: cols :: Nil) = prevShape
+    val (a :: b :: rows :: cols :: _) = prevShape
     val pad = if padding then 1 else 0
     val height = (rows - pool._1 + pad) / strides._1 + 1
     val width = (cols - pool._2 + pad) / strides._2 + 1
     val shape = List(a, b, height, width)
     println(s"MaxPool shape: $shape")
-    copy(shape = shape)
+    copy(shape = shape, shape2D = (height, width))
 
   def apply(x: Tensor[T]): Activation[T] =    
     val pooled = x.as4D.data.map(_.map(c => poolMax(c.as2D))).as4D
@@ -221,15 +222,19 @@ case class MaxPool[T: ClassTag: Numeric](
     println(s"pooled: ${pooled}")
     Activation(x, pooled, pooled)
   
+  private def imageRegions(image: Tensor2D[T], kernel: Int, stride: Int) =
+    val (rows, cols) = shape2D
+    for i <- 0 until rows by stride yield   
+      for j <- 0 until cols by stride yield          
+        (image.slice((i, i + kernel), (j, j + kernel)).as2D, i, j)
+        
   private def poolMax(image: Tensor2D[T]): Tensor2D[T] =
-    val (rows, cols) = image.shape2D     
-    (0 until rows by strides._1).map { i =>
-      (0 until cols by strides._2).map { j =>
-        val bottom = math.min(i + pool._1, rows)
-        val right = math.min(j + pool._2, cols)
-        image.slice((i, bottom), (j, right)).max
-      }
-    }.map(_.toArray).toArray.as2D    
+    val (rows, cols) = shape2D
+    val out = Array.ofDim(rows, cols)
+    val pooled = 
+      for (region, i, j) <- imageRegions(image, pool._1, strides._1).flatten yield            
+        out(i)(j) = region.max
+    out.as2D
 
   private def maxIndex(matrix: Tensor2D[T]): (Int, Int) =    
     val maxPerRow = matrix.data.zipWithIndex.map((row, i) => (row.max, i, row.indices.maxBy(row)))
