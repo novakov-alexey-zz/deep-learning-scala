@@ -51,16 +51,11 @@ case class Dense[T: ClassTag: Numeric](
     val w = initializer.weights(inputs, units)
     val b = initializer.biases(units)
     val optimizerParams = optimizer.init(w, b)
-    // println(s"Dense shape: ${List(inputs, units)}")
     copy(w = Some(w), b = Some(b), shape = List(inputs, units), optimizerParams = optimizerParams)
 
   override def apply(x: Tensor[T]): Activation[T] =    
     val z = x * w + b 
     val a = f(z)
-    // println(s"x: $x")
-    // println(s"w: $w")
-    // println(s"a: $a")
-    // println(s"Dense output shape: ${a.shape}")
     Activation(x, z, a)
 
   override def update(wGradient: Tensor[T], bGradient: Tensor[T], optimizerParams: Option[OptimizerParams[T]] = None): Layer[T] =
@@ -69,7 +64,6 @@ case class Dense[T: ClassTag: Numeric](
     copy(w = updatedW, b = updatedB, optimizerParams = optimizerParams)
 
   override def backward(a: Activation[T], prevDelta: Tensor[T], prevWeight: Option[Tensor[T]]): Gradient[T] = 
-    // println(s"Dense prevDelta: $prevDelta")
     val delta = (prevWeight match 
       case Some(pw) => prevDelta * pw.T
       case None     => prevDelta
@@ -239,23 +233,15 @@ case class MaxPool[T: ClassTag: Numeric](
     val (i, j) = maxPerRow.maxBy(_._1).tail    
     (i, j)
 
-  def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] = 
-    println(s"MaxPool prevDelta: $prevDelta")
+  def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] =    
     val image = a.x.as4D.data
-    println(s"MaxPool image: ${a.x}")
     val delta = image.zip(prevDelta.as4D.data).map { (imageChannels, deltaChannels) =>
       imageChannels.zip(deltaChannels).map { (ic, dc) =>
-        val image = ic.as2D        
-        val (rows, cols) = dc.as2D.shape2D
-        val out = image.zero.as2D.data
-
-        for i <- 0 until rows do
-          for j <- 0 until cols do
-            val (x, y) = (i * strides._1, j * strides._2)        
-            val area = image.slice((x, x + pool._1), (y, y + pool._2))
-            val (a, b) = maxIndex(area)
-            out(x + a)(y + b) = dc(i)(j)
-        
+        val image = ic.as2D   
+        val out = image.zero.as2D.data        
+        for (region, i, j) <- imageRegions(image, pool._1, strides._1).flatten yield            
+          val (a, b) = maxIndex(region)        
+          out(i + a)(j + b) = dc(i)(j)      
         out
       }
     }

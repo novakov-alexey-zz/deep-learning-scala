@@ -61,31 +61,35 @@ class MaxPoolTest extends AnyFlatSpec with Matchers {
 
     // BACKWARD
     // given
-    val prevDelta = Array(
+    val delta = Array(
       Array(
         Array(
-          Array(1d, 2, 3),
-          Array(7d, 1, 2)
+          Array(1d, 2, 3, 1),
+          Array(7d, 1, 2, 1),
+          Array(1d, 1, 2, 1)
         )
       )
     )
     // when
-    val Gradient(delta, w, b) = paddedLayer.backward(a, prevDelta.as4D, None)
+    val Gradient(nextDelta, w, b) = paddedLayer.backward(a, delta.as4D, None)
 
     //then
-    delta.as4D.shape4D should ===(a.x.as4D.shape4D)
+    nextDelta.as4D.shape4D should ===(a.x.as4D.shape4D)
     w should ===(None)
     b should ===(None)
-    delta.as4D.data should ===(
-      Array(
+
+    withClue(s"$nextDelta") {
+      nextDelta.as4D.data should ===(
         Array(
           Array(
-            Array(0d, 0, 0, 0),
-            Array(0d, 1, 3, 0),
-            Array(0d, 7, 2, 0)
+            Array(
+              Array(0d, 0, 0, 1),
+              Array(0d, 1, 3, 1),
+              Array(0d, 1, 2, 1)
+            )
           )
         )
       )
-    )
+    }
   }
 }
