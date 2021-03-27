@@ -68,7 +68,6 @@ class MaxPoolTest extends AnyFlatSpec with Matchers {
   }
 
   it should "do forward propagation with padding" in {
-    // Padding
     // given
     val padded = Array(
       Array(

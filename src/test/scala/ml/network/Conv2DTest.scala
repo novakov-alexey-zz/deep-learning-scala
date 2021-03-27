@@ -4,7 +4,6 @@ import ml.transformation.castFromTo
 import ml.tensors.api._
 import ml.tensors.ops._
 import optimizers.given_Optimizer_Adam as adam
-import inits.given_ParamsInitializer_T_HeNormal as normal
 
 import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
@@ -28,9 +27,7 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
     override def biases(length: Int): Tensor1D[T] = 
       inits.zeros(length)
       
-  it should "do forward propagation" in {
-    // given
-    val image1 = Tensor3D(Array(
+  val image1 = Tensor3D(Array(
       Array(
         Array(1d, 2, 3, 3), 
         Array(2d, 3, 4, 3), 
@@ -47,7 +44,8 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
         Array(5d, 6, 7, 2)
       )
     ))
-    val image2 = Tensor3D(Array(
+
+  val image2 = Tensor3D(Array(
       Array(
         Array(1d, 2, 3, 1), 
         Array(2d, 3, 4, 1), 
@@ -64,7 +62,11 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
         Array(5d, 6, 7, 3)
       )
     ))    
-    val images = Tensor4D(image1, image2)                
+  
+  val images = Tensor4D(image1, image2)
+
+  it should "do forward propagation" in {
+    // given            
     val inputShape = images.shape4D
 
     val layer = Conv2D[Double](
@@ -75,11 +77,12 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
     ).init(inputShape.toList, testInit, adam)    
     
     // when
-    val a = layer(images)    
+    val activation = layer(images)    
     val (imageCount, inputChannels, width, height) = inputShape
 
     // then
-    a.z.shape should ===(List(imageCount, layer.filterCount, 2, 3))
+    activation.z.shape should ===(List(imageCount, layer.filterCount, 2, 3))
+
     val w = layer.w.getOrElse(fail("Weight must not be empty"))
     val b = layer.b.getOrElse(fail("Bias must not be empty"))  
 
@@ -111,61 +114,71 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
       
     val expectedActivities = filterChannels(w.as4D, images).as4D
             
-    val layerActivity = a.z.as4D.data    
+    val layerActivity = activation.z.as4D.data    
     layerActivity.zip(expectedActivities.data).foreach { (actual, expected) =>      
       actual should ===(expected)      
     }
     
     val expectedActivation = layer.f(expectedActivities)
-    a.a.as4D.data sameElements expectedActivation.as4D.data    
+    activation.a.as4D.data sameElements expectedActivation.as4D.data    
   }
 
-  it should "do backward propagation" in {
-    val image1 = Tensor3D(Array(
-      Array(
-        Array(1d, 2, 3, 3), 
-        Array(2d, 3, 4, 3), 
-        Array(5d, 6, 7, 3)
-      ),
-      Array(
-        Array(1d, 2, 3, 1), 
-        Array(2d, 3, 4, 1), 
-        Array(5d, 6, 7, 1)
-      ),
-      Array(
-        Array(1d, 2, 3, 2), 
-        Array(2d, 3, 4, 2), 
-        Array(5d, 6, 7, 2))))
-    val images = Tensor4D(image1)                
+  it should "do backward propagation from max pooling layer" in {     
+    // given              
     val inputShape = images.shape4D    
-    val layer = Conv2D[Double](
+    val convLayer = Conv2D[Double](
       f = testActivation,
       filterCount = 3,
       kernel = (2, 2),
       strides = (1, 1)
     ).init(inputShape.toList, testInit, adam)
 
-    val a = layer(images)
-    // println("w:\n" + layer.w)
-    // println(s"a:\n${a.a}")
-    // println(s"x:\n${a.x}")
+    val a = convLayer(images)        
+    val poolingLayer = MaxPool[Double](padding = false).init(convLayer.shape)
+    val pooled = poolingLayer(a.a)
 
-    val filterChannels = Array(
+    val maxPoolDelta = Array(
+      Array(
         Array(
-          Array(2.0, 3.0, 1),
-          Array(3.0, 4.0, 2)
-        ), 
+          Array(1d, 2)          
+        ),
         Array(
-          Array(3.0, 4.0, 2), 
-          Array(6.0, 7.0, 2)
-        ), 
+          Array(7d, 1)          
+        ),
         Array(
-          Array(4.0, 3.0, 3),           
-          Array(8.0, 3.0, 4)
+          Array(4d, 8)
+        )
+      )
+    )    
+    val Gradient(convDelta, _, _) = poolingLayer.backward(pooled, maxPoolDelta.as4D, None)
+    val Gradient(delta, Some(wGrad), bGrad) = convLayer.backward(a, convDelta, None)    
+    val Some(weightsShape) = convLayer.w.map(_.shape)
+    weightsShape should ===(wGrad.shape)
+    val expectedConvGrad = Array(      
+      Array.fill(3)(Array(
+          Array(6d, 8),
+          Array(12d,14)
+        )), 
+      Array.fill(3)(Array(
+          Array(3.0,4.0),
+          Array(6.0,7.0)
+        )), 
+      Array.fill(3)(Array(
+          Array(24.0,32.0),
+          Array(48.0,56.0)
       ))
-    val prevDelta = Tensor4D(Array.fill(layer.filterCount)(filterChannels))
-    // println(s"prevDelta:\n$prevDelta")
-    val Gradient(delta, wGrad, bGrad) = layer.backward(a, prevDelta, None)
-    // println(s"wGrad:\n$wGrad")
+    )
+    wGrad.as4D.data should ===(expectedConvGrad)
+    delta.as4D.data should===(
+      Array.fill(3)(         
+        Array(
+          Array(
+            Array(0.0, 0.0, 0.0, 0.0), 
+            Array(0.0, 11.0, 11.0, 0.0), 
+            Array(0.0, 11.0, 11.0, 0.0)
+          )
+        )
+      )
+    )
   }
 }

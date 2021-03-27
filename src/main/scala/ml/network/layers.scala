@@ -151,20 +151,20 @@ case class Conv2D[T: ClassTag: Numeric](
       for j <- 0 to cols - kernel by stride yield          
         (image.slice((i, i + kernel), (j, j + kernel)).as2D, i, j)    
 
-  override def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] =
-    println(s"Conv2D prevDelta: $prevDelta")
+  override def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] =    
     (w, b) match 
       case (Some(w), Some(b)) =>
         val prevLoss = prevDelta.as4D
         val x = a.x.as4D                            
         val oneImage = x.data.head
 
-        val wGradient = prevLoss.data.map { lossChannels =>
-          lossChannels.zip(oneImage).map { (lc, ic) =>          
-            calcGradient(lc.as2D, ic.as2D,  kernel._1, strides._1)                    
+        val wGradient = prevLoss.data.flatMap { lossChannels =>
+          lossChannels.map { lc =>
+            oneImage.map { ic =>
+              calcGradient(lc.as2D, ic.as2D,  kernel._1, strides._1)
+            }
           }
-        }.as4D
-        println(s"Conv2D wGradient:$wGradient")
+        }.as4D        
         
         val bGradient = prevLoss.data.map { channels =>
           channels.map { image =>
@@ -205,13 +205,10 @@ case class MaxPool[T: ClassTag: Numeric](
     val height = (rows - pool._1 + pad) / strides._1 + 1
     val width = (cols - pool._2 + pad) / strides._2 + 1
     val shape = List(a, b, height, width)
-    println(s"MaxPool shape: $shape")
     copy(shape = shape, shape2D = (height, width))
 
   def apply(x: Tensor[T]): Activation[T] =    
     val pooled = x.as4D.data.map(_.map(c => poolMax(c.as2D))).as4D
-    println(s"MaxPool output shape: ${pooled.shape}")
-    println(s"pooled: ${pooled}")
     Activation(x, pooled, pooled)
   
   private def imageRegions(image: Tensor2D[T], kernel: Int, stride: Int) =
@@ -230,8 +227,7 @@ case class MaxPool[T: ClassTag: Numeric](
 
   private def maxIndex(matrix: Tensor2D[T]): (Int, Int) =    
     val maxPerRow = matrix.data.zipWithIndex.map((row, i) => (row.max, i, row.indices.maxBy(row)))
-    val (i, j) = maxPerRow.maxBy(_._1).tail    
-    (i, j)
+    maxPerRow.maxBy(_._1).tail    
 
   def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] =    
     val image = a.x.as4D.data
@@ -247,7 +243,7 @@ case class MaxPool[T: ClassTag: Numeric](
     }
     Gradient(delta.as4D)    
 
-case class Flatten2D[T: ClassTag: Numeric](  
+case class Flatten2D[T: ClassTag: Numeric](
   shape: List[Int] = Nil,
   prevShape: List[Int] = Nil
 ) extends Layer[T]:
@@ -259,7 +255,6 @@ case class Flatten2D[T: ClassTag: Numeric](
 
   def apply(x: Tensor[T]): Activation[T] =
     val flat = x.as2D
-    println(s"flattened: $flat")
     Activation(x, flat, flat)
 
   def backward(a: Activation[T], prevDelta: Tensor[T], prevWeight: Option[Tensor[T]]): Gradient[T] =    
@@ -268,9 +263,8 @@ case class Flatten2D[T: ClassTag: Numeric](
       case None     => prevDelta
     ) //|*| f.derivative(a.z) TODO: is any z multiply required here?
 
-    println(s"Flatten prevDelta: $prevDelta")    
     val (filters :: rows :: cols :: _) = prevShape.drop(1)
     val unflatten = delta.as2D.data
       .flatMap(_.grouped(cols).toArray.grouped(rows).toArray.grouped(filters).toArray) //TODO: replace with some reshape method
-      .as4D    
+      .as4D
     Gradient(unflatten)
