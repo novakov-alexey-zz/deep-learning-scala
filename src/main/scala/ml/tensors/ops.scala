@@ -44,6 +44,7 @@ private trait genOps:
     def sumRows: Tensor[T] = TensorOps.sumRows(t)    
     def sumCols: Tensor[T] = TensorOps.sumCols(t)
     def max: T = TensorOps.max(t)
+    def reshape(shape: List[Int]): Tensor[T] = TensorOps.reshape(t, shape)
  
   extension [T: ClassTag: Fractional](t: Tensor[T])
     def /(that: Tensor[T]): Tensor[T] = TensorOps.div(t, that)
@@ -98,15 +99,22 @@ object ops extends genOps:
   extension [T: ClassTag: Numeric](a: Array[T])
     def as1D: Tensor1D[T] = Tensor1D(a)
     def as2D: Tensor2D[T] = Tensor2D(a)
+
+  extension [T: ClassTag](a: Array[T])(using n: Numeric[T])
+    def +(b: Array[T]): Array[T] = a.zip(b).map(n.plus)
   
   extension [T: ClassTag: Numeric](a: Array[Array[T]])
     def as2D: Tensor2D[T] = Tensor2D(a)
+    def sum: T = a.map(_.sum).sum
   
   extension [T: ClassTag: Numeric](a: IndexedSeq[IndexedSeq[T]])
     def as2D: Tensor2D[T] = Tensor2D(a.map(_.toArray).toArray)
   
   extension [T: ClassTag: Numeric](a: Array[Tensor2D[T]])
     def as3D: Tensor3D[T] = Tensor3D(a:_*)
+  
+  extension [T: ClassTag: Numeric](a: Array[Array[Array[T]]])
+    def as3D: Tensor3D[T] = Tensor3D(a)
   
   extension [T: ClassTag: Numeric](a: Array[Array[Array[Array[T]]]])
     def as4D: Tensor4D[T] = Tensor4D(a)
@@ -633,3 +641,13 @@ object TensorOps:
       case Tensor2D(d) => d.map(_.max).max
       case Tensor3D(d) => d.map(_.map(_.max).max).max
       case Tensor4D(d) => d.map(_.map(_.map(_.max).max).max).max
+
+  def reshape[T: ClassTag: Numeric](t: Tensor[T], shape: List[Int]): Tensor[T] =
+    shape match
+      case cubes :: rows :: cols :: _ => t match
+        case Tensor2D(data) =>
+          Tensor4D(data.flatMap(_.grouped(cols).toArray.grouped(rows).toArray.grouped(cubes).toArray))
+        case _ => t    
+      case _ => t
+
+      

@@ -96,12 +96,12 @@ case class Conv2D[T: ClassTag: Numeric](
   
   override def apply(x: Tensor[T]): Activation[T] =
     val z = (w, b) match
-      case (Some(w), Some(b)) => forward(kernel._1, strides._1, b, x, w)
+      case (Some(w), Some(b)) => forward(kernel, strides, b, x, w)
       case _ => x // does nothing when one the params is empty    
     val a = f(z)    
     Activation(x, z, a)
 
-  private def forward(kernel: Int, stride: Int, bias: Tensor[T], x: Tensor[T], w: Tensor[T]): Tensor[T] =
+  private def forward(kernel: (Int, Int), stride: (Int, Int), bias: Tensor[T], x: Tensor[T], w: Tensor[T]): Tensor[T] =
     val (images, filters) = (x.as4D, w.as4D)    
     
     def filterImage(image: Array[Array[Array[T]]]) =
@@ -114,71 +114,70 @@ case class Conv2D[T: ClassTag: Numeric](
     
     images.data.map(filterImage).as4D    
   
-  private def conv(filterChannel: Tensor2D[T], imageChannel: Tensor2D[T], kernel: Int, stride: Int) =    
+  private def conv(filterChannel: Tensor2D[T], imageChannel: Tensor2D[T], kernel: (Int, Int), stride: (Int, Int)) =    
     val filtered = 
       for row <- imageRegions(imageChannel, kernel, stride) yield
         for (region, _, _) <- row yield
           (region |*| filterChannel).sum
 
     filtered.as2D
-
-  // TODO: rewrite via imageRegions
-  private def fullConv(filter: Tensor2D[T], loss: Tensor2D[T], kernel: Int, stride: Int, rows: Int, cols: Int) = 
+  
+  private def fullConv(filter: Tensor2D[T], loss: Tensor2D[T], kernel: (Int, Int), stride: (Int, Int), rows: Int, cols: Int) =     
     val out = Array.ofDim(rows, cols)
     
-    for i <- 0 until kernel do
-      for j <- 0 until kernel do                
+    for i <- 0 until kernel._1 do
+      for j <- 0 until kernel._2 do                
         val delta = filter * loss.data(i)(j)
-        val (x, y) = (i * stride, j * stride)
+        val (x, y) = (i * stride._1, j * stride._2)
         
         val iter = delta.as2D.data.flatten.iterator
-        for k <- x until x + kernel do
-          for l <- y until y + kernel do            
+        for k <- x until x + kernel._1 do
+          for l <- y until y + kernel._2 do            
             out(k)(l) += iter.next
 
     out.as2D
 
-  private def calcGradient(loss: Tensor2D[T], image: Tensor2D[T], kernel: Int, stride: Int) =        
+  private def calcGradient(loss: Tensor2D[T], image: Tensor2D[T], kernel: (Int, Int), stride: (Int, Int)) =        
     val grad = 
       for (region, i, j) <- imageRegions(image, kernel, stride).flatten
       yield region * loss.data(i)(j)    
 
     grad.reduce(_ + _).as2D
 
-  private def imageRegions(image: Tensor2D[T], kernel: Int, stride: Int) =
+  private def imageRegions(image: Tensor2D[T], kernel: (Int, Int), stride: (Int, Int)) =
     val (rows, cols) = image.shape2D    
-    for i <- 0 to rows - kernel by stride yield   
-      for j <- 0 to cols - kernel by stride yield          
-        (image.slice((i, i + kernel), (j, j + kernel)).as2D, i, j)    
+    for i <- 0 to rows - kernel._1 by stride._1 yield   
+      for j <- 0 to cols - kernel._2 by stride._2 yield       
+        (image.slice((i, i + kernel._1), (j, j + kernel._2)).as2D, i, j)    
 
   override def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] =    
     (w, b) match 
       case (Some(w), Some(b)) =>
-        val prevLoss = prevDelta.as4D
+        val prevLoss = prevDelta.as4D // nImages, filters, rows, cols
         val x = a.x.as4D                            
-        val oneImage = x.data.head
-
-        val wGradient = prevLoss.data.flatMap { lossChannels =>
+        
+        def imageGrad(imageChannels: Array[Array[Array[T]]], lossChannels: Array[Array[Array[T]]]) =          
           lossChannels.map { lc =>
-            oneImage.map { ic =>
-              calcGradient(lc.as2D, ic.as2D,  kernel._1, strides._1)
+            imageChannels.map { ic =>
+              calcGradient(lc.as2D, ic.as2D,  kernel, strides)
             }
           }
-        }.as4D        
+                  
+        val wGradient = x.data.zip(prevLoss.data)
+          .map(imageGrad).reduce { (image1, image2) =>
+            image1.zip(image2).map { (channels1, channels2) =>
+              channels1.zip(channels2).map(_ + _)
+            }
+        }.as4D
         
-        val bGradient = prevLoss.data.map { channels =>
-          channels.map { image =>
-            image.as2D.sum
-          }
-        }.as2D
+        val bGradient = prevLoss.data.map(_.map(_.sum)).reduce(_ + _).as1D
 
         val (_, _, rows, cols) = x.shape4D
-        val delta = w.as4D.data.map { channels =>          
-          prevLoss.data.map { lossChannels =>
-            val r = lossChannels.zip(channels).map { (lc, fc) =>
-              fullConv(fc.as2D, lc.as2D, kernel._1, strides._1, rows, cols)
-            }
-            r.reduce(_ + _)
+        val delta = prevLoss.data.map { lossChannels =>          
+          w.as4D.data.map { channels =>
+            lossChannels.zip(channels).map { (lc, fc) =>
+              fullConv(fc.as2D, lc.as2D, kernel, strides, rows, cols)
+            }.reduce(_ + _)
           }
         }.as4D
 
@@ -264,7 +263,5 @@ case class Flatten2D[T: ClassTag: Numeric](
     ) //|*| f.derivative(a.z) TODO: is any z multiply required here?
 
     val (filters :: rows :: cols :: _) = prevShape.drop(1)
-    val unflatten = delta.as2D.data
-      .flatMap(_.grouped(cols).toArray.grouped(rows).toArray.grouped(filters).toArray) //TODO: replace with some reshape method
-      .as4D
+    val unflatten = delta.reshape(List(filters, rows, cols))
     Gradient(unflatten)

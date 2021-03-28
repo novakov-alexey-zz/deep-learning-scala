@@ -133,11 +133,12 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
       strides = (1, 1)
     ).init(inputShape.toList, testInit, adam)
 
+    // when
     val a = convLayer(images)        
     val poolingLayer = MaxPool[Double](padding = false).init(convLayer.shape)
     val pooled = poolingLayer(a.a)
 
-    val maxPoolDelta = Array(
+    val maxPoolDelta = Array.fill(images.length)(
       Array(
         Array(
           Array(1d, 2)          
@@ -151,10 +152,12 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
       )
     )    
     val Gradient(convDelta, _, _) = poolingLayer.backward(pooled, maxPoolDelta.as4D, None)
-    val Gradient(delta, Some(wGrad), bGrad) = convLayer.backward(a, convDelta, None)    
+    val Gradient(delta, Some(wGrad), Some(bGrad)) = convLayer.backward(a, convDelta, None)    
     val Some(weightsShape) = convLayer.w.map(_.shape)
+    
+    // then
     weightsShape should ===(wGrad.shape)
-    val expectedConvGrad = Array(      
+    val expectedConvGrad = Tensor4D(Array(      
       Array.fill(3)(Array(
           Array(6d, 8),
           Array(12d,14)
@@ -167,18 +170,21 @@ class Conv2DTest extends AnyFlatSpec with Matchers {
           Array(24.0,32.0),
           Array(48.0,56.0)
       ))
-    )
-    wGrad.as4D.data should ===(expectedConvGrad)
-    delta.as4D.data should===(
-      Array.fill(3)(         
-        Array(
+    )).map(_ * images.length).as4D.data    
+
+    wGrad.as4D.data should ===(expectedConvGrad)        
+    val expectedDelta = Array.fill(2)(         
+        Array.fill(3)(
           Array(
             Array(0.0, 0.0, 0.0, 0.0), 
             Array(0.0, 11.0, 11.0, 0.0), 
             Array(0.0, 11.0, 11.0, 0.0)
           )
-        )
-      )
-    )
+        ))    
+    delta.as4D.data should===(expectedDelta)    
+
+    bGrad.shape should ===(List(3))
+    val expectedBias = Array(2d,1,8).map(_ * images.length)
+    bGrad.as1D.data should ===(expectedBias)
   }
 }

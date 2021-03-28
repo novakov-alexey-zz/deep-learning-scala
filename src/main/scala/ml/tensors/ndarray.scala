@@ -33,7 +33,7 @@ object NDArray:
     NDArray[T](init(shape.toList, n.one), shape.toList)
 
 extension [T: ClassTag: Numeric](a: NDArray[T])
-  def reshape(shape: Int*): NDArray[T] =
+  protected def reshape(shape: Int*): NDArray[T] =
     val newShape = shape.toList
     assert(a.shape.reduce(_ * _) == newShape.reduce(_ * _), s"Current shape ${a.shape} does not fit new shape = $shape")
     
