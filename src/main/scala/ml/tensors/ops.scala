@@ -159,7 +159,7 @@ object TensorOps:
       case (Tensor1D(data), Tensor0D(data2)) => // broadcasting
         Tensor1D(data.map(_ - data2))
       case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) => // broadcasting
-        matrixMinustVector(t1, t2)
+        matrixMinusVector(t1, t2)
       case (Tensor4D(data), Tensor4D(data2)) =>
         checkShapeEquality(a, b)
         val res = data.zip(data2).map { (cubes, cubes2) =>
@@ -181,7 +181,7 @@ object TensorOps:
         res(i)(j) = a(i)(j) - b(i)(j)
     res
         
-  private def matrixMinustVector[T: Numeric: ClassTag](
+  private def matrixMinusVector[T: Numeric: ClassTag](
       matrix: Tensor2D[T],
       vector: Tensor1D[T]
   ) =
@@ -201,25 +201,9 @@ object TensorOps:
 
   def plus[T: ClassTag: Numeric](a: Tensor[T], b: Tensor[T]): Tensor[T] =
     (a, b) match
-      case (Tensor1D(data), Tensor1D(data2)) =>
-        checkShapeEquality(a, b)        
-        val res = Array.ofDim(data.length)
-        for i <- 0 until data.length do 
-          res(i) = data(i) + data2(i) 
-        Tensor1D(res)
-
+      // broadcasting
       case (Tensor2D(data), Tensor0D(data2)) =>
         Tensor2D(data.map(_.map(_ + data2)))
-
-      case (t1 @ Tensor2D(data), Tensor2D(data2)) =>
-        checkShapeEquality(a, b)        
-        val (rows, cols) = t1.shape2D
-        val res = Array.ofDim(rows, cols)
-        for i <- 0 until rows do
-          for j <- 0 until cols do
-            res(i)(j) = data(i)(j) + data2(i)(j)
-        Tensor2D(res)
-
       case (Tensor0D(data), Tensor2D(data2)) =>
         Tensor2D(data2.map(_.map(_ + data)))
       case (t1 @ Tensor2D(_), t2 @ Tensor1D(_)) =>
@@ -230,10 +214,39 @@ object TensorOps:
         Tensor1D(data.map(_ + data2))
       case (Tensor0D(data), Tensor1D(data2)) =>
         Tensor1D(data2.map(_ + data))
+      case (Tensor4D(data), Tensor0D(data2)) =>
+        Tensor4D(data.map(_.map(_.map(_.map(_ + data2)))))
+
+      case (Tensor1D(data), Tensor1D(data2)) =>
+        checkShapeEquality(a, b)        
+        val res = Array.ofDim(data.length)
+        for i <- 0 until data.length do 
+          res(i) = data(i) + data2(i) 
+        Tensor1D(res)
+      case (t1 @ Tensor2D(data), Tensor2D(data2)) =>
+        checkShapeEquality(a, b)        
+        val res = matrixPlusMatrix(data, data2)
+        Tensor2D(res)
+      case (Tensor4D(data), Tensor4D(data2)) =>
+        checkShapeEquality(a, b)
+        val res = data.zip(data2).map { (cubes1, cubes2) =>
+          cubes1.zip(cubes2).map { (mat1, mat2) =>
+            matrixPlusMatrix(mat1, mat2)
+          }
+        }
+        Tensor4D(res)      
       case (Tensor0D(data), Tensor0D(data2)) =>
         Tensor0D(data + data2)      
       case _ => notImplementedError(a :: b:: Nil)
 
+  private def matrixPlusMatrix[T: ClassTag: Numeric](a: Array[Array[T]], b: Array[Array[T]]): Array[Array[T]] = 
+    val (rows, cols) = (a.length, a.head.length)
+    val res = Array.ofDim(rows, cols)
+    for i <- 0 until rows do
+      for j <- 0 until cols do
+        res(i)(j) = a(i)(j) + b(i)(j)
+    res
+    
   private def notImplementedError[T](ts: List[Tensor[T]]) =
     sys.error(s"Not implemented for: ${ts.mkString("\n")}")
 
@@ -503,15 +516,27 @@ object TensorOps:
   
   def div[T: ClassTag: Fractional](t1: Tensor[T], t2: Tensor[T]): Tensor[T] =    
     (t1, t2) match
+      // broadcasting
       case (Tensor2D(data), Tensor0D(data2)) => Tensor2D(data.map(_.map(_ / data2)))
+      case (Tensor1D(data), Tensor0D(data2)) => Tensor1D(data.map(_ / data2))
+      case (Tensor4D(data), Tensor0D(data2)) => Tensor4D(data.map(_.map(_.map(_.map(_ / data2)))))
+      
       case (Tensor0D(data), Tensor0D(data2)) => Tensor0D(data / data2)
       case (Tensor1D(data), Tensor1D(data2)) => Tensor1D(data.zip(data2).map(_ /_))
-      case (Tensor1D(data), Tensor0D(data2)) => Tensor1D(data.map(_ / data2))
-      case (Tensor2D(data), Tensor2D(data2)) => 
-        val res = data.zip(data2).map((a, b) => a.zip(b).map(_ / _))
-        Tensor2D(res)
-      case _ => sys.error(s"Not implemented for $t1 \n and $t2")
+      case (Tensor2D(data), Tensor2D(data2)) =>        
+        Tensor2D(matrixDivMatrix(data, data2))
+      case (Tensor4D(data), Tensor4D(data2)) =>
+        val res = data.zip(data2).map { (cubes1, cubes2) =>
+          cubes1.zip(cubes2).map { (mat1, mat2) => 
+            matrixDivMatrix(mat1, mat2)
+          }
+        }
+        Tensor4D(res)
+      case _ => notImplementedError(t1 :: t2 :: Nil)
   
+  private def matrixDivMatrix[T: ClassTag: Fractional](a: Array[Array[T]], b: Array[Array[T]]): Array[Array[T]] =
+    a.zip(b).map((a, b) => a.zip(b).map(_ / _))
+
   def sqrt[T: ClassTag: Numeric](t: Tensor[T]): Tensor[T] = 
     map(t, v => castFromTo[Double, T](math.sqrt(castFromTo[T, Double](v))))
 
@@ -519,11 +544,16 @@ object TensorOps:
     def powValue(v: T) =
       val res = math.pow(n.toDouble(v), to)
       castFromTo[Double, T](res)
+    def powArray(a: Array[T]) =
+      a.map(powValue)
+    def powMatrix(a: Array[Array[T]]) =
+      a.map(_.map(powValue))
 
     t match
       case Tensor0D(data) => Tensor0D(powValue(data))
-      case Tensor1D(data) => Tensor1D(data.map(powValue))
-      case Tensor2D(data) => Tensor2D(data.map(_.map(powValue)))
+      case Tensor1D(data) => Tensor1D(powArray(data))
+      case Tensor2D(data) => Tensor2D(powMatrix(data))
+      case Tensor4D(data) => Tensor4D(data.map(_.map(powMatrix)))
       case _ => notImplementedError(t :: Nil)
   
   def zero[T: ClassTag](t: Tensor[T])(using n: Numeric[T]): Tensor[T] =
