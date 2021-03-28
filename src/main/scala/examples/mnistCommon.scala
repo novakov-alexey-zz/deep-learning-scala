@@ -8,6 +8,8 @@ import ml.preprocessing._
 import scala.reflect.ClassTag
 
 object mnistCommon:
+  val imageDir = "images"
+  
   def accuracyMnist[T: ClassTag: Ordering](using n: Numeric[T]) = new Metric[T]:
     val name = "accuracy"
 

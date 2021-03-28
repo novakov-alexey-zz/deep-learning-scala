@@ -13,7 +13,7 @@ import java.nio.file.Path
 import scala.reflect.ClassTag
 
 @main def MNIST() =
-  val dataset = MnistLoader.loadData[Double]("images", flat = true)
+  val dataset = MnistLoader.loadData[Double](imageDir, flat = true)
 
   val ann = Sequential[Double, Adam, HeNormal](
     crossEntropy,

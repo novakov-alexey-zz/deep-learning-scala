@@ -13,7 +13,7 @@ import java.nio.file.Path
 import scala.reflect.ClassTag
 
 @main def CNN() =
-  val cnn = Sequential[Double, StandardGD, HeNormal](
+  val cnn = Sequential[Double, Adam, HeNormal](
     crossEntropy,
     learningRate = 0.001,
     metrics = List(accuracy),
@@ -26,15 +26,7 @@ import scala.reflect.ClassTag
     .add(Dense(relu, 6))      
     .add(Dense(softmax, 10))
   
-  val encoder = OneHotEncoder(
-  classes = (0 to 9).map(i => (i.toDouble, i.toDouble)).toMap)
-
-  def prepareData(x: Tensor[Double], y: Tensor[Double]) =
-    val xData = x.map(_ / 255d)
-    val yData = encoder.transform(y.as1D)
-    (xData, yData) 
-
-  val dataset = MnistLoader.loadData[Double]("images", flat = false)
+  val dataset = MnistLoader.loadData[Double](imageDir, flat = false)
   val (xTrain, yTrain) = prepareData(dataset.trainImage, dataset.trainLabels)
   
   val start = System.currentTimeMillis()  

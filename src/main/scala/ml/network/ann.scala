@@ -121,7 +121,8 @@ case class Sequential[T: ClassTag: Fractional, U, V](
     def getBatches = if shuffle then Random.shuffle(batches) else batches.toIterable    
     val currentLayers = getOrInitLayers(x.shape)
     val initialMetrics = metrics.map(_ -> List.empty[Double])
-
+    println(s"Starting $epochs epochs:")
+    
     val (updatedLayers, lHistory, epochLosses, metricValues) =
       (1 to epochs).foldLeft(currentLayers, ListBuffer.empty[List[Layer[T]]], ListBuffer.empty[T], initialMetrics) {
         case ((layers, lHistory, losses, trainingMetrics), epoch) =>
