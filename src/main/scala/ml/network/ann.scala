@@ -79,28 +79,32 @@ case class Sequential[T: ClassTag: Fractional, U, V](
     copy(layerStack = inputShape => 
       val currentLayers = layerStack(inputShape)
       val prevShape = currentLayers.lastOption.map(_.shape).getOrElse(inputShape)
-      val l = layer match
+      val initialized = layer match
         case o: Optimizable[_] => o.init(prevShape, initializer, optimizer)
         case _ => layer.init(prevShape)
-      (currentLayers :+ l)
+      (currentLayers :+ initialized)
     )
 
   private def trainEpoch(
-      batches: Iterable[(Tensor[T], Tensor[T])],
+      batches: Array[(Tensor[T], Tensor[T])],
       layers: List[Layer[T]],
       epoch: Int
   ) =    
-    val (trained, losses, metricValue) =
-      batches.zipWithIndex.foldLeft(layers, ListBuffer.empty[T], ListBuffer.fill(metrics.length)(0)) {
-        case ((layers, batchLoss, epochMetrics), ((xBatch, yBatch), i)) =>
+    val (trained, losses, metricValue, _) =
+      batches.zipWithIndex.foldLeft(
+        layers, 
+        ListBuffer.empty[T], 
+        ListBuffer.fill(metrics.length)(0),
+        0L) {
+        case ((layers, batchLoss, epochMetrics, stepDuration), ((x, y), i)) =>
           // forward
-          val activations = activate(xBatch, layers)
-          val actual = yBatch          
+          val start = System.currentTimeMillis()
+          val activations = activate(x, layers)             
           val predicted = activations.last.a
-          val error = predicted - actual          
-          val loss = lossFunc(actual, predicted)
+          val error = predicted - y          
+          val loss = lossFunc(y, predicted)
 
-          // backward
+          // backward          
           val updated = optimizer.updateWeights(
             layers,
             activations,
@@ -108,28 +112,39 @@ case class Sequential[T: ClassTag: Fractional, U, V](
             optimizerCfg,
             (i + 1) * epoch
           )
+
+          // update metrics
           val matches = metrics
-            .map(_.matches(actual, predicted))
+            .map(_.matches(y, predicted))
             .zip(epochMetrics).map(_ + _)
-          (updated, batchLoss :+ loss, matches.to(ListBuffer))
+          val duration = stepDuration + (System.currentTimeMillis() - start)
+          printEpochPerformance(i + 1, duration)
+
+          (updated, batchLoss :+ loss, matches.to(ListBuffer), duration)
       }    
     (trained, getAvgLoss(losses.toList), metricValue)
+  
+  inline private def printEpochPerformance(step: Int, duration: Long) = 
+    if step % 50 == 0 then
+      println(s"${step.toDouble / (duration / 1000d)} steps/sec")
 
   def train(x: Tensor[T], y: Tensor[T], epochs: Int, shuffle: Boolean = true): Model[T] =
     lazy val actualBatches = y.batches(batchSize).toArray
     lazy val batches = x.batches(batchSize).zip(actualBatches).toArray
-    def getBatches = if shuffle then Random.shuffle(batches) else batches.toIterable    
+    def getBatches = if shuffle then Random.shuffle(batches).toArray else batches
     val currentLayers = getOrInitLayers(x.shape)
     val initialMetrics = metrics.map(_ -> List.empty[Double])
-    println(s"Starting $epochs epochs:")
-    
+    println(s"Running $epochs epochs")
+
     val (updatedLayers, lHistory, epochLosses, metricValues) =
       (1 to epochs).foldLeft(currentLayers, ListBuffer.empty[List[Layer[T]]], ListBuffer.empty[T], initialMetrics) {
         case ((layers, lHistory, losses, trainingMetrics), epoch) =>
+          val start = System.currentTimeMillis()
           val (trainedLayers, avgLoss, epochMatches) = trainEpoch(getBatches, layers, epoch)
+          val duration = System.currentTimeMillis() - start
           
           val (epochMetrics, epochMetricAvg) = updateMetrics(epochMatches.toList, trainingMetrics, x.length)
-          printMetrics(epoch, epochs, avgLoss, epochMetricAvg)          
+          printMetrics(epoch, epochs, avgLoss, epochMetricAvg, duration)          
 
           (trainedLayers, lHistory :+ trainedLayers, losses :+ avgLoss, epochMetrics)
       }
@@ -151,12 +166,12 @@ case class Sequential[T: ClassTag: Fractional, U, V](
     }
     (updatedMetrics, observedAvg)
 
-  private def printMetrics(epoch: Int, epochs: Int, avgLoss: T, values: List[(Metric[T], Double)]) = 
+  private def printMetrics(epoch: Int, epochs: Int, avgLoss: T, values: List[(Metric[T], Double)], duration: Long) = 
     val metricsStat = values
       .map((m, avg) => s"${m.name}: $avg")
       .mkString(", metrics: [", ";", "]")
     println(
-      s"epoch: $epoch/$epochs, avg. loss: $avgLoss${if metrics.nonEmpty then metricsStat else ""}"
+      s"epoch: $epoch/$epochs, duration: ${duration/1000} sec, avg. loss: $avgLoss${if metrics.nonEmpty then metricsStat else ""}"
     )
 
   def reset(): Model[T] =
