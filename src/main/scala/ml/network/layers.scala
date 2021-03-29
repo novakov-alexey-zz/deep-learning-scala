@@ -6,6 +6,7 @@ import ml.tensors.ops._
 import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
 import scala.math.Numeric.Implicits._
+import scala.collection.parallel.CollectionConverters._
 
 final case class Gradient[T](
   delta: Tensor[T], 
@@ -30,21 +31,20 @@ trait Optimizable[T] extends Layer[T]:
   val optimizerParams: Option[OptimizerParams[T]]
   
   def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Layer[T]
-
-  //TODO: bGradient model as Tensor[T] | T
+  
   def update(wGradient: Tensor[T], bGradient: Tensor[T], optimizerParams: Option[OptimizerParams[T]] = None): Layer[T]  
   
   override def toString() = 
     s"(${super.toString},\nweight = $w,\nbias = $b)"
 
-case class Dense[T: ClassTag: Numeric](
+case class Dense[T: ClassTag](
     override val f: ActivationFunc[T] = ActivationFuncApi.linear[T],
     units: Int = 1,
     shape: List[Int] = Nil,
     w: Option[Tensor[T]] = None,
     b: Option[Tensor[T]] = None,
     optimizerParams: Option[OptimizerParams[T]] = None
-) extends Optimizable[T]:
+)(using n: Fractional[T]) extends Optimizable[T]:
 
   override def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Layer[T] =
     val inputs = prevShape.drop(1).reduce(_ * _)
@@ -73,7 +73,7 @@ case class Dense[T: ClassTag: Numeric](
     val bGradient = Some(delta)
     Gradient(delta, wGradient, bGradient)
 
-case class Conv2D[T: ClassTag: Numeric](
+case class Conv2D[T: ClassTag](
     override val f: ActivationFunc[T],
     filterCount: Int = 1,   
     kernel: (Int, Int) = (2, 2), 
@@ -82,7 +82,7 @@ case class Conv2D[T: ClassTag: Numeric](
     w: Option[Tensor[T]] = None,
     b: Option[Tensor[T]] = None,
     optimizerParams: Option[OptimizerParams[T]] = None
-) extends Optimizable[T]:
+)(using n: Fractional[T]) extends Optimizable[T]:
 
   override def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Conv2D[T] =        
     val images :: channels :: height :: width :: _ = prevShape    
@@ -112,7 +112,7 @@ case class Conv2D[T: ClassTag: Numeric](
         filtered + bias.asT
       }
     
-    images.data.map(filterImage).as4D    
+    images.data.par.map(filterImage).toArray.as4D    
   
   private def conv(filterChannel: Tensor2D[T], imageChannel: Tensor2D[T], kernel: (Int, Int), stride: (Int, Int)) =    
     val filtered = 
@@ -162,24 +162,29 @@ case class Conv2D[T: ClassTag: Numeric](
               calcGradient(lc.as2D, ic.as2D,  kernel, strides)
             }
           }
-                  
-        val wGradient = x.data.zip(prevLoss.data)
-          .map(imageGrad).reduce { (image1, image2) =>
-            image1.zip(image2).map { (channels1, channels2) =>
-              channels1.zip(channels2).map(_ + _)
-            }
-        }.as4D
         
-        val bGradient = prevLoss.data.map(_.map(_.sum)).reduce(_ + _).as1D
+        val wGradient = x.data.zip(prevLoss.data)
+          .par.map(imageGrad)
+          .reduce {
+            (image1, image2) =>
+              image1.zip(image2).map { (channels1, channels2) =>
+                channels1.zip(channels2).map(_ + _)
+              }
+          }.as4D
+
+        val bGradient = prevLoss.data
+          .par.map(_.map(_.sum))
+          .reduce(_ + _)
+          .as1D
 
         val (_, _, rows, cols) = x.shape4D
-        val delta = prevLoss.data.map { lossChannels =>          
+        val delta = prevLoss.data.par.map { lossChannels =>          
           w.as4D.data.map { channels =>
             lossChannels.zip(channels).map { (lc, fc) =>
               fullConv(fc.as2D, lc.as2D, kernel, strides, rows, cols)
             }.reduce(_ + _)
           }
-        }.as4D
+        }.toArray.as4D
 
         Gradient(delta, Some(wGradient), Some(bGradient))
       case _ =>    
@@ -229,8 +234,8 @@ case class MaxPool[T: ClassTag: Numeric](
     maxPerRow.maxBy(_._1).tail    
 
   def backward(a: Activation[T], prevDelta: Tensor[T], preWeight: Option[Tensor[T]]): Gradient[T] =    
-    val image = a.x.as4D.data
-    val delta = image.zip(prevDelta.as4D.data).map { (imageChannels, deltaChannels) =>
+    val images = a.x.as4D.data
+    val delta = images.zip(prevDelta.as4D.data).par.map { (imageChannels, deltaChannels) =>
       imageChannels.zip(deltaChannels).map { (ic, dc) =>
         val image = ic.as2D   
         val out = image.zero.as2D.data        
@@ -240,7 +245,7 @@ case class MaxPool[T: ClassTag: Numeric](
         out
       }
     }
-    Gradient(delta.as4D)    
+    Gradient(delta.toArray.as4D)
 
 case class Flatten2D[T: ClassTag: Numeric](
   shape: List[Int] = Nil,
@@ -260,7 +265,7 @@ case class Flatten2D[T: ClassTag: Numeric](
     val delta = (prevWeight match 
       case Some(pw) => prevDelta * pw.T
       case None     => prevDelta
-    ) //|*| f.derivative(a.z) TODO: is any z multiply required here?
+    ) //|*| f.derivative(a.z) //TODO: is any z multiply required here?
 
     val (filters :: rows :: cols :: _) = prevShape.drop(1)
     val unflatten = delta.reshape(List(filters, rows, cols))

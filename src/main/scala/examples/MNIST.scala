@@ -20,7 +20,8 @@ import scala.reflect.ClassTag
     learningRate = 0.001,
     metrics = List(accuracy),
     batchSize = 128,
-    gradientClipping = clipByValue(5.0d)
+    gradientClipping = clipByValue(5.0d),
+    printStepTps = true
   )
     .add(Dense(relu, 50))      
     .add(Dense(softmax, 10))

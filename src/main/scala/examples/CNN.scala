@@ -17,10 +17,11 @@ import scala.reflect.ClassTag
     crossEntropy,
     learningRate = 0.001,
     metrics = List(accuracy),
-    batchSize = 128,
-    gradientClipping = clipByValue(5.0d)
+    batchSize = 64,
+    gradientClipping = clipByValue(5.0d),
+    printStepTps = true
   )
-    .add(Conv2D(relu, 8, kernel = (5,5)))      
+    .add(Conv2D(relu, 4, kernel = (5, 5)))    
     .add(MaxPool(strides = (2, 2), pool = (2, 2)))       
     .add(Flatten2D())
     .add(Dense(relu, 6))      

@@ -49,21 +49,21 @@ object ActivationFuncApi:
   def softmax[T: ClassTag: Ordering](using n: Fractional[T]) = new ActivationFunc[T]:
     val toleration = castFromTo[Double, T](0.9E-15d)
 
-    override def apply(x: Tensor[T]): Tensor[T] =       
+    override def apply(x: Tensor[T]): Tensor[T] =      
       val applied = x.mapRow { row =>
         val max = row.max        
         val expNorm = row.map(v => exp(v - max))         
         val sum = expNorm.sum        
         expNorm.map(_ / sum)
       }
-      
+
       val appliedSum = applied.sumCols.map(
         v => 
           if v.abs - toleration > n.one 
           then v 
           else n.one
       )
-      val totalSum = appliedSum.sumRows.as0D.data      
+      val totalSum = appliedSum.sumRows.as1D.data.head
       assert(totalSum == x.length, 
         s"Softmax distribution sum is not equal to 1 at some activation, but\n${appliedSum}")
       applied

@@ -59,7 +59,8 @@ case class Sequential[T: ClassTag: Fractional, U, V](
     history: TrainHistory[T] = TrainHistory[T](),    
     metricValues: MetricValues[T] = Nil,
     gradientClipping: GradientClipping[T] = GradientClippingApi.noClipping[T],
-    cfg: Option[OptimizerCfg[T]] = None
+    cfg: Option[OptimizerCfg[T]] = None,
+    printStepTps: Boolean = false
 )(using optimizer: Optimizer[U], initializer: ParamsInitializer[T, V]) extends Model[T]:
 
   private val optimizerCfg = 
@@ -125,7 +126,7 @@ case class Sequential[T: ClassTag: Fractional, U, V](
     (trained, getAvgLoss(losses.toList), metricValue)
   
   inline private def printEpochPerformance(step: Int, duration: Long) = 
-    if step % 50 == 0 then
+    if printStepTps && step % 50 == 0 then
       println(s"${step.toDouble / (duration / 1000d)} steps/sec")
 
   def train(x: Tensor[T], y: Tensor[T], epochs: Int, shuffle: Boolean = true): Model[T] =
