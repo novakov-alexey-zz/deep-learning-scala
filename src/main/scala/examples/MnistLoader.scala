@@ -70,7 +70,7 @@ object MnistLoader:
       val (nRows, nCols) =
         (imageInputStream.readInt(), imageInputStream.readInt())
 
-      Using.resource(
+      val labelsTensor = Using.resource(
         new DataInputStream(        
           new GZIPInputStream(Files.newInputStream(labels))          
         )
@@ -88,38 +88,39 @@ object MnistLoader:
           s"Number of images is not equal to number of labels, $numberOfImages != $numberOfLabels"
         )
 
-        val labelsTensor = labelInputStream.readAllBytes
+        labelInputStream.readAllBytes
           .map(l => n.fromInt(l))
           .take(samples)
           .as1D
-    
-        val cfg = LoaderCfg(samples, numberOfImages, nRows, nCols)
-        val images = 
-          if flat then readAsVector(cfg, imageInputStream) 
-          else readAsMatrix(cfg, imageInputStream)
+        }
+        
+      val cfg = LoaderCfg(samples, numberOfImages, nRows, nCols)
+      val images = 
+        if flat then readAsVector(cfg, imageInputStream) 
+        else readAsMatrix(cfg, imageInputStream)
 
-        (images, labelsTensor)
-      }
+      (images, labelsTensor)      
     }
 
   private def readAsVector[T: ClassTag](cfg: LoaderCfg, imageInputStream: DataInputStream)(using n: Numeric[T]) = 
     val images = ArrayBuffer.empty[Array[T]]
     val singeImageSize = cfg.nRows * cfg.nCols
     
-    for i <- (0 until cfg.numberOfImages) do      
-      val image = (0 until singeImageSize).map(_ => n.fromInt(imageInputStream.readUnsignedByte())).toArray      
-      images += image    
+    for _ <- (0 until cfg.numberOfImages) do           
+      images += readNBytes(singeImageSize, imageInputStream)
     
     images.toArray.take(cfg.samples).as2D
 
   private def readAsMatrix[T: ClassTag](cfg: LoaderCfg, imageInputStream: DataInputStream)(using n: Numeric[T]) = 
     val images = ArrayBuffer.empty[Array[Array[Array[T]]]]
 
-    for i <- (0 until cfg.numberOfImages) do
+    for _ <- (0 until cfg.numberOfImages) do
       val image = ArrayBuffer.empty[Array[T]]
       for _ <- (0 until cfg.nRows) do            
-        val row = (0 until cfg.nCols).map(_ => n.fromInt(imageInputStream.readUnsignedByte())).toArray
-        image += row
+        image += readNBytes(cfg.nCols, imageInputStream)
       images += Array(image.toArray)    
     
     images.toArray.take(cfg.samples).as4D
+
+  private def readNBytes[T: ClassTag](count: Int, is: DataInputStream)(using n: Numeric[T]) =
+    (0 until count).map(_ => n.fromInt(is.readUnsignedByte())).toArray
