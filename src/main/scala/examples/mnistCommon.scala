@@ -15,14 +15,13 @@ object mnistCommon:
 
     def matches(actual: Tensor[T], predicted: Tensor[T]): Int =      
         val predictedArgMax = predicted.argMax      
-        actual.argMax.equalRows(predictedArgMax)
-      
-  val accuracy = accuracyMnist[Double]
+        actual.argMax.equalRows(predictedArgMax)     
 
-  val encoder = OneHotEncoder(
-    classes = (0 to 9).map(i => (i.toDouble, i.toDouble)).toMap)  
-
-  def prepareData(x: Tensor[Double], y: Tensor[Double]) =
-    val xData = x.map(_ / 255d) // normalize to [0,1] range
+  def prepareData[T: ClassTag](x: Tensor[T], y: Tensor[T])(using n: Fractional[T]) =
+    val encoder = OneHotEncoder(
+      classes = (0 to 9).map(i => (n.fromInt(i), n.fromInt(i))).toMap
+    )  
+    val max = n.fromInt(255)
+    val xData = x.map(v =>  n.div(v, max)) // normalize to [0,1] range
     val yData = encoder.transform(y.as1D)
     (xData, yData)

@@ -17,16 +17,17 @@ import java.io.{File,PrintWriter}
 @main def linearRegression() = lrTest(false)
 
 def lrTest(fromTest: Boolean = true) =   
+  type Precision = Float
   val random = new Random()
   val weight = random.nextFloat()
   val bias = random.nextFloat()
 
-  def batch(batchSize: Int): (ArrayBuffer[Double], ArrayBuffer[Double]) =
-    val inputs = ArrayBuffer.empty[Double]
-    val outputs = ArrayBuffer.empty[Double]
-    def noise = random.nextDouble / 5
+  def batch(batchSize: Int): (ArrayBuffer[Precision], ArrayBuffer[Precision]) =
+    val inputs = ArrayBuffer.empty[Precision]
+    val outputs = ArrayBuffer.empty[Precision]
+    def noise = random.nextFloat / 5
     (0 until batchSize).foldLeft(inputs, outputs) { case ((x, y), _) =>        
-        val rnd = random.nextDouble
+        val rnd = random.nextFloat
         x += rnd + noise
         y += bias + weight * rnd + noise
         (x, y)
@@ -34,17 +35,17 @@ def lrTest(fromTest: Boolean = true) =
   
   val optimizer = "adam"
 
-  val ann = Sequential[Double, Adam, RandomUniform](
+  val ann = Sequential[Precision, Adam, RandomUniform](
     meanSquareError,
-    learningRate = 0.0012f,    
+    learningRate = 0.0012,    
     batchSize = 16,
-    gradientClipping = clipByValue(5.0d)
+    gradientClipping = clipByValue(5.0)
   ).add(Dense())    
 
   val (xBatch, yBatch) = batch(10000)
   val x = Tensor1D(xBatch.toArray)
   val y = Tensor1D(yBatch.toArray)
-  val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2f)
+  val ((xTrain, xTest), (yTrain, yTest)) = (x, y).split(0.2)
 
   val model = ann.train(xTrain.T, yTrain.T, epochs = 100)
 
@@ -54,7 +55,7 @@ def lrTest(fromTest: Boolean = true) =
 
   // Test Dataset
   val testPredicted = model(xTest.T)  
-  val value = meanSquareError[Double].apply(yTest.T, testPredicted)
+  val value = meanSquareError[Precision].apply(yTest.T, testPredicted)
   println(s"test meanSquareError = $value")
 
   if !fromTest then
@@ -83,13 +84,13 @@ def lrTest(fromTest: Boolean = true) =
     store(s"metrics/$optimizer-gradient.csv", "w,b,loss", gradientData)
 
     // loss surface
-    val weights = for (i <- 0 until 100) yield i/100d 
+    val weights = for (i <- 0 until 100) yield i/100.0f
     val biases = weights
     
     println("Calculating loss surface")
     val losses = weights.par.map { w =>
       val wT = w.as2D
-      biases.foldLeft(ArrayBuffer.empty[Double]) { (acc, b) =>
+      biases.foldLeft(ArrayBuffer.empty[Precision]) { (acc, b) =>
         val loss = ann.loss(x.T, y.T, List(Dense(w = Some(wT), b = Some(b.as1D))))  
         acc :+ loss
       }

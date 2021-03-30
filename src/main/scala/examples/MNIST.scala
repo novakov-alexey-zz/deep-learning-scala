@@ -13,14 +13,16 @@ import java.nio.file.Path
 import scala.reflect.ClassTag
 
 @main def MNIST() =
-  val dataset = MnistLoader.loadData[Double](imageDir, flat = true)
+  type Precision = Float
+  val dataset = MnistLoader.loadData[Precision](imageDir)
+  val accuracy = accuracyMnist[Precision]
 
-  val ann = Sequential[Double, Adam, HeNormal](
+  val ann = Sequential[Precision, Adam, HeNormal](
     crossEntropy,
     learningRate = 0.001,
     metrics = List(accuracy),
     batchSize = 128,
-    gradientClipping = clipByValue(5.0d),
+    gradientClipping = clipByValue(5.0),
     printStepTps = true
   )
     .add(Dense(relu, 50))      

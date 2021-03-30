@@ -13,25 +13,30 @@ import java.nio.file.Path
 import scala.reflect.ClassTag
 
 @main def CNN() =
-  val cnn = Sequential[Double, Adam, HeNormal](
+  type Precision = Float
+  val accuracy = accuracyMnist[Precision]
+
+  val cnn = Sequential[Precision, Adam, HeNormal](
     crossEntropy,
     learningRate = 0.001,
     metrics = List(accuracy),
-    batchSize = 64,
-    gradientClipping = clipByValue(5.0d),
+    batchSize = 128,
+    gradientClipping = clipByValue(5.0),
     printStepTps = true
   )
-    .add(Conv2D(relu, 4, kernel = (5, 5)))    
-    .add(MaxPool(strides = (2, 2), pool = (2, 2)))       
+    .add(Conv2D(relu, 8, kernel = (5, 5)))    
+    .add(MaxPool(strides = (2, 2), pool = (2, 2), padding = false))
+    // .add(Conv2D(relu, 8, kernel = (5, 5)))    
+    // .add(MaxPool(strides = (2, 2), pool = (2, 2), padding = false))       
     .add(Flatten2D())
-    .add(Dense(relu, 6))      
+    .add(Dense(relu, 128))      
     .add(Dense(softmax, 10))
   
-  val dataset = MnistLoader.loadData[Double](imageDir, flat = false)
+  val dataset = MnistLoader.loadData[Precision](imageDir, flat = false)
   val (xTrain, yTrain) = prepareData(dataset.trainImage, dataset.trainLabels)
   
   val start = System.currentTimeMillis()  
-  val model = cnn.train(xTrain, yTrain, epochs = 10, shuffle = true)
+  val model = cnn.train(xTrain, yTrain, epochs = 5, shuffle = true)
   println(s"training time: ${(System.currentTimeMillis() - start) / 1000f} in sec")
 
   val (xTest, yTest) = prepareData(dataset.testImages, dataset.testLabels)
