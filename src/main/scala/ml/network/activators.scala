@@ -47,7 +47,7 @@ object ActivationFuncApi:
     override val name = "sigmoid"  
 
   def softmax[T: ClassTag: Ordering](using n: Fractional[T]) = new ActivationFunc[T]:
-    val toleration = castFromTo[Double, T](0.9E-15d)
+    val toleration = castFromTo[Double, T](0.9E-6d)
 
     override def apply(x: Tensor[T]): Tensor[T] =      
       val applied = x.mapRow { row =>
