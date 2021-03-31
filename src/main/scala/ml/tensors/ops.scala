@@ -32,7 +32,7 @@ private trait genOps:
 
     def batches(batchSize: Int): Iterator[Tensor[T]] = TensorOps.batches(t, batchSize)
     def equalRows(that: Tensor[T]): Int = TensorOps.equalRows(t, that)
-    def clipInRange(min: T, max: T): Tensor[T] = TensorOps.clipInRange(t, min, max)
+    def clipInRange(min: T, max: T): Tensor[T] = TensorOps.clipInRange(t, min, max)    
     def :**(to: Int): Tensor[T] = TensorOps.pow(t, to)
     def sqr: Tensor[T] = TensorOps.pow(t, 2)    
     def sqrt: Tensor[T] = TensorOps.sqrt(t)
@@ -47,6 +47,7 @@ private trait genOps:
     def reshape(shape: List[Int]): Tensor[T] = TensorOps.reshape(t, shape)
  
   extension [T: ClassTag: Fractional](t: Tensor[T])
+    def clipByNorm(norm: T): Tensor[T] = TensorOps.clipByNorm(t, norm)
     def /(that: Tensor[T]): Tensor[T] = TensorOps.div(t, that)
     def :/(that: T): Tensor[T] = TensorOps.div(t, Tensor0D(that))
 
@@ -513,6 +514,12 @@ object TensorOps:
           else v
 
     map(t, clipValue)    
+  
+  def clipByNorm[T: ClassTag](t: Tensor[T], norm: T)(using n: Fractional[T]): Tensor[T] = 
+    val l2norm = castFromTo[Double, T](math.sqrt(castFromTo[T, Double](sum(pow(t, 2)))))
+    if l2norm > norm then
+      map(t, v => n.times(v, norm) / l2norm)  
+    else t
   
   def div[T: ClassTag: Fractional](t1: Tensor[T], t2: Tensor[T]): Tensor[T] =    
     (t1, t2) match
