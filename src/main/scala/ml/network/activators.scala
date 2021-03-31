@@ -18,12 +18,23 @@ object ActivationFuncApi:
   def relu[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T]:
 
     override def apply(x: Tensor[T]): Tensor[T] =
-      x.map(t => max(n.zero, t))
+      x.map(t => if t < n.zero then n.zero else t)
 
     override def derivative(x: Tensor[T]): Tensor[T] =
       x.map(t => if t < n.zero then n.zero else n.one)
 
     override val name = "relu"
+  
+  def leakyRelu[T: ClassTag](using n: Numeric[T]) = new ActivationFunc[T]:
+    val scaler = castFromTo[Double, T](0.01)
+    
+    override def apply(x: Tensor[T]): Tensor[T] =
+      x.map(t =>  if t < n.zero then n.times(scaler, t) else t)
+
+    override def derivative(x: Tensor[T]): Tensor[T] =
+      x.map(t => if t < n.zero then scaler else n.one)
+
+    override val name = "leakyRelu"
   
   def sigmoid[T: ClassTag](using n: Fractional[T]) = new ActivationFunc[T]:
 
@@ -36,23 +47,23 @@ object ActivationFuncApi:
     override val name = "sigmoid"  
 
   def softmax[T: ClassTag: Ordering](using n: Fractional[T]) = new ActivationFunc[T]:
-    val toleration = castFromTo[Double, T](0.4E-15d)
+    val toleration = castFromTo[Double, T](0.9E-6d)
 
-    override def apply(x: Tensor[T]): Tensor[T] =       
+    override def apply(x: Tensor[T]): Tensor[T] =      
       val applied = x.mapRow { row =>
         val max = row.max        
         val expNorm = row.map(v => exp(v - max))         
         val sum = expNorm.sum        
         expNorm.map(_ / sum)
       }
-      
+
       val appliedSum = applied.sumCols.map(
         v => 
           if v.abs - toleration > n.one 
           then v 
           else n.one
       )
-      val totalSum = appliedSum.sumRows.as0D.data      
+      val totalSum = appliedSum.sumRows.as1D.data.head
       assert(totalSum == x.length, 
         s"Softmax distribution sum is not equal to 1 at some activation, but\n${appliedSum}")
       applied

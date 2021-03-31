@@ -22,10 +22,10 @@ object LossApi:
       case (Tensor1D(a), Tensor1D(b)) =>         
         val sum = (t1, t2).map2(f).sum //TODO: sum and then apply f ?
         (sum, t1.length)
-      case (Tensor2D(a), Tensor2D(b)) =>
-        val size = t1.length * t1.cols        
+      case (t @ Tensor2D(a), Tensor2D(b)) =>
+        val (rows, cols) = t.shape2D
         val sum = (t1, t2).map2(f).sum //TODO: sum and then apply f ?
-        (sum, size)
+        (sum, rows * cols)
       case (Tensor0D(a), Tensor0D(b)) =>        
         (f(a, b), 1)
       case _ => 

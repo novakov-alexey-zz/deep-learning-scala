@@ -81,6 +81,8 @@ case class StandardScaler[T: Numeric: ClassTag](
       case t @ Tensor2D(_) =>
         StandardScaler(t.T.data.map(fitColumn))
       case Tensor0D(_) => StandardScaler()
+      case _ => 
+        sys.error(s"Not implemented for: $samples")
 
   private def fitColumn(data: Array[T]) =
     val nums = data.map(castFromTo[T, Double])
@@ -111,6 +113,7 @@ case class StandardScaler[T: Numeric: ClassTag](
             res(i)(j) = castFromTo[Double, T](scale(n, stat))
         Tensor2D(res)
       case Tensor0D(_) => t // scaling is not applicable for scalar tensor
+      case _ => sys.error(s"Not implemented for: $t")
 
   private def scale(n: Double, stat: ColumnStat): Double =
     (n - stat.mean) / stat.stdDev

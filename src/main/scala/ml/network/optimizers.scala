@@ -16,7 +16,7 @@ type Stub
 trait Optimizer[U]:
 
   def updateWeights[T: ClassTag](
-      weights: List[Layer[T]],
+      layers: List[Layer[T]],
       activations: List[Activation[T]],
       error: Tensor[T],
       cfg: OptimizerCfg[T],
@@ -49,7 +49,7 @@ object optimizers:
     )(using n: Fractional[T]): List[Layer[T]] =
       val AdamCfg(b1, b2, eps) = c.adam        
 
-      def correction(gradient: Tensor[T], m: Tensor[T], v: Tensor[T]) =        
+      def correction(gradient: Tensor[T], m: Tensor[T], v: Tensor[T]) =
         val mt = (b1 * m) + ((n.one - b1) * gradient)
         val vt = (b2 * v) + ((n.one - b2) * gradient.sqr)        
         val mHat = mt :/ (n.one - (b1 ** timestep))
@@ -66,26 +66,27 @@ object optimizers:
           None: Option[Tensor[T]]          
         ) {             
             case (
-                  (layer, Activation(x, z, _)),
+                  (layer, a),
                   (ls, prevDelta, prevWeight)
-                ) =>            
-              val delta = (prevWeight match 
-                case Some(pw) => prevDelta * pw.T
-                case None     => prevDelta
-              ) multiply layer.f.derivative(z)        
-              val wGradient = c.clip(x.T * delta)
-              val bGradient = c.clip(delta).sum
-              
-              // Adam                        
-              val updated = layer.optimizerParams match
-                case Some(AdamState(mw, vw, mb, vb)) =>
-                  val (corrW, weightM, weightV) = correction(wGradient, mw, vw)                  
-                  val (corrB, biasM, biasV) = correction(bGradient.asT, mb, vb)                  
-                  val adamState = Some(AdamState(weightM, weightV, biasM, biasV))
-                  layer.update(corrW, corrB, adamState)
-                case _ => layer
-              
-              (updated +: ls, delta, layer.w)                        
+                ) =>                                        
+              val Gradient(delta, wOpt, bOpt) = layer.backward(a, prevDelta, prevWeight)
+              val (updated, weight) = (layer, wOpt, bOpt) match
+                case (o: Optimizable[T], Some(w), Some(b)) =>
+                  // Adam                        
+                  o.optimizerParams match
+                    case Some(AdamState(mw, vw, mb, vb)) =>
+                      val wGradient = c.clip(w)
+                      val bGradient = c.clip(b).sumRows
+                      val batchSize = n.fromInt(a.x.length)                                   
+                      val (corrW, weightM, weightV) = correction(wGradient :/ batchSize, mw, vw)                  
+                      val (corrB, biasM, biasV) = correction(bGradient :/ batchSize, mb, vb)                  
+                      val adamState = Some(AdamState(weightM, weightV, biasM, biasV))
+                      (o.update(corrW, corrB, adamState), o.w)                    
+                    case _ => 
+                      (layer, None) // does nothing if Adam state is not set
+                case _ => 
+                  (layer, None) // does nothing if one of the params is empty 
+              (updated +: ls, delta, weight)                        
         }
         ._1.toList    
 
@@ -106,20 +107,21 @@ object optimizers:
           None: Option[Tensor[T]]
         ) {
           case (
-                (layer, Activation(x, z, _)),
+                (layer, a),
                 (ls, prevDelta, prevWeight)
               ) =>            
-            val delta = (prevWeight match 
-              case Some(pw) => prevDelta * pw.T
-              case None     => prevDelta
-            ) multiply layer.f.derivative(z)
-
-            val wGradient = cfg.clip(x.T * delta)
-            val bGradient = cfg.clip(delta).sum
-            val corrW = cfg.learningRate * wGradient
-            val corrB = cfg.learningRate * bGradient
-            val updated = layer.update(corrW, corrB.as0D) +: ls
-            (updated, delta, layer.w)
+            val Gradient(delta, w, b) = layer.backward(a, prevDelta, prevWeight)
+            val (updated, weight) = (layer, w, b) match
+              case (o: Optimizable[T], Some(w), Some(b)) =>
+                val batchSize = n.fromInt(a.x.length)
+                val wGradient = cfg.clip(w)
+                val bGradient = cfg.clip(b).sumRows :/ batchSize
+                val corrW = cfg.learningRate * wGradient
+                val corrB = cfg.learningRate * bGradient
+                (o.update(corrW, corrB), o.w)
+              case _ => 
+                (layer, None)
+            (updated +: ls, delta, weight)
         }
         ._1.toList    
 
@@ -149,5 +151,8 @@ trait GradientClipping[T] extends (Tensor[T] => Tensor[T])
 object GradientClippingApi:
   def clipByValue[T: Fractional: ClassTag](value: T): GradientClipping[T] = 
     _.clipInRange(-value, value)
+  
+  def clipByNorm[T: Fractional: ClassTag](value: T): GradientClipping[T] = 
+    _.clipByNorm(value)
 
-  def noClipping[T]: GradientClipping[T] = t => t
+  inline def noClipping[T]: GradientClipping[T] = t => t

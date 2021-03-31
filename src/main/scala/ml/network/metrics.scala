@@ -14,8 +14,8 @@ trait Metric[T]:
       predicted: Tensor[T]
   ): Int
 
-  def average(count: Int, correct: Int): Double =    
-    correct.toDouble / count
+  def average(count: Int, matches: Int): Double =    
+    matches.toDouble / count
 
   def apply(actual: Tensor[T], predicted: Tensor[T]): Double =
     val correct = matches(actual, predicted)

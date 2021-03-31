@@ -54,12 +54,13 @@ case class Sequential[T: ClassTag: Fractional, U, V](
     learningRate: T,
     metrics: List[Metric[T]] = Nil,
     batchSize: Int = 16,
-    layerStack: Int => List[Layer[T]] = _ => List.empty[Layer[T]],    
+    layerStack: List[Int] => List[Layer[T]] = _ => List.empty[Layer[T]],    
     layers: List[Layer[T]] = Nil,
     history: TrainHistory[T] = TrainHistory[T](),    
     metricValues: MetricValues[T] = Nil,
     gradientClipping: GradientClipping[T] = GradientClippingApi.noClipping[T],
-    cfg: Option[OptimizerCfg[T]] = None
+    cfg: Option[OptimizerCfg[T]] = None,
+    printStepTps: Boolean = false
 )(using optimizer: Optimizer[U], initializer: ParamsInitializer[T, V]) extends Model[T]:
 
   private val optimizerCfg = 
@@ -76,31 +77,35 @@ case class Sequential[T: ClassTag: Fractional, U, V](
     lossFunc(y, predicted)  
 
   def add(layer: Layer[T]): Sequential[T, U, V] =
-    copy(layerStack = (inputs) => 
-      val currentLayers = layerStack(inputs)
-      val prevInput = currentLayers.lastOption.map(_.units).getOrElse(inputs)
-      val w = initializer.weights(prevInput, layer.units)
-      val b = initializer.biases(layer.units)
-      val optimizerParams = optimizer.init(w, b)
-      (currentLayers :+ layer.withParams(w, b, optimizerParams))
+    copy(layerStack = inputShape => 
+      val currentLayers = layerStack(inputShape)
+      val prevShape = currentLayers.lastOption.map(_.shape).getOrElse(inputShape)
+      val initialized = layer match
+        case o: Optimizable[_] => o.init(prevShape, initializer, optimizer)
+        case _ => layer.init(prevShape)
+      (currentLayers :+ initialized)
     )
 
   private def trainEpoch(
-      batches: Iterable[(Array[Array[T]], Array[Array[T]])],
+      batches: Array[(Tensor[T], Tensor[T])],
       layers: List[Layer[T]],
       epoch: Int
   ) =    
-    val (trained, losses, metricValue) =
-      batches.zipWithIndex.foldLeft(layers, ListBuffer.empty[T], ListBuffer.fill(metrics.length)(0)) {
-        case ((layers, batchLoss, epochMetrics), ((xBatch, yBatch), i)) =>
+    val (trained, losses, metricValue, _) =
+      batches.zipWithIndex.foldLeft(
+        layers, 
+        ListBuffer.empty[T], 
+        ListBuffer.fill(metrics.length)(0),
+        0L) {
+        case ((layers, batchLoss, epochMetrics, stepDuration), ((x, y), i)) =>
           // forward
-          val activations = activate(xBatch.as2D, layers)
-          val actual = yBatch.as2D          
+          val start = System.currentTimeMillis()
+          val activations = activate(x, layers)             
           val predicted = activations.last.a
-          val error = predicted - actual          
-          val loss = lossFunc(actual, predicted)
+          val error = predicted - y          
+          val loss = lossFunc(y, predicted)
 
-          // backward
+          // backward          
           val updated = optimizer.updateWeights(
             layers,
             activations,
@@ -108,28 +113,39 @@ case class Sequential[T: ClassTag: Fractional, U, V](
             optimizerCfg,
             (i + 1) * epoch
           )
+
+          // update metrics
           val matches = metrics
-            .map(_.matches(actual, predicted))
+            .map(_.matches(y, predicted))
             .zip(epochMetrics).map(_ + _)
-          (updated, batchLoss :+ loss, matches.to(ListBuffer))
+          val duration = stepDuration + (System.currentTimeMillis() - start)
+          printEpochPerformance(i + 1, duration)
+
+          (updated, batchLoss :+ loss, matches.to(ListBuffer), duration)
       }    
     (trained, getAvgLoss(losses.toList), metricValue)
+  
+  inline private def printEpochPerformance(step: Int, duration: Long) = 
+    if printStepTps && step % 50 == 0 then
+      println(s"${step.toDouble / (duration / 1000d)} steps/sec")
 
   def train(x: Tensor[T], y: Tensor[T], epochs: Int, shuffle: Boolean = true): Model[T] =
     lazy val actualBatches = y.batches(batchSize).toArray
     lazy val batches = x.batches(batchSize).zip(actualBatches).toArray
-    def getBatches = if shuffle then Random.shuffle(batches) else batches.toIterable
-    val inputs = x.cols
-    val currentLayers = getOrInitLayers(inputs)
+    def getBatches = if shuffle then Random.shuffle(batches).toArray else batches
+    val currentLayers = getOrInitLayers(x.shape)
     val initialMetrics = metrics.map(_ -> List.empty[Double])
+    println(s"Running $epochs epochs")
 
     val (updatedLayers, lHistory, epochLosses, metricValues) =
       (1 to epochs).foldLeft(currentLayers, ListBuffer.empty[List[Layer[T]]], ListBuffer.empty[T], initialMetrics) {
         case ((layers, lHistory, losses, trainingMetrics), epoch) =>
+          val start = System.currentTimeMillis()
           val (trainedLayers, avgLoss, epochMatches) = trainEpoch(getBatches, layers, epoch)
+          val duration = System.currentTimeMillis() - start
           
           val (epochMetrics, epochMetricAvg) = updateMetrics(epochMatches.toList, trainingMetrics, x.length)
-          printMetrics(epoch, epochs, avgLoss, epochMetricAvg)          
+          printMetrics(epoch, epochs, avgLoss, epochMetricAvg, duration)          
 
           (trainedLayers, lHistory :+ trainedLayers, losses :+ avgLoss, epochMetrics)
       }
@@ -151,17 +167,17 @@ case class Sequential[T: ClassTag: Fractional, U, V](
     }
     (updatedMetrics, observedAvg)
 
-  private def printMetrics(epoch: Int, epochs: Int, avgLoss: T, values: List[(Metric[T], Double)]) = 
+  private def printMetrics(epoch: Int, epochs: Int, avgLoss: T, values: List[(Metric[T], Double)], duration: Long) = 
     val metricsStat = values
       .map((m, avg) => s"${m.name}: $avg")
       .mkString(", metrics: [", ";", "]")
     println(
-      s"epoch: $epoch/$epochs, avg. loss: $avgLoss${if metrics.nonEmpty then metricsStat else ""}"
+      s"epoch: $epoch/$epochs, duration: ${duration/1000} sec, avg. loss: $avgLoss${if metrics.nonEmpty then metricsStat else ""}"
     )
 
   def reset(): Model[T] =
     copy(layers = Nil)
 
-  private def getOrInitLayers(inputs: Int) =
-    if layers.isEmpty then layerStack(inputs)
+  private def getOrInitLayers(inputShape: List[Int]) =
+    if layers.isEmpty then layerStack(inputShape)
     else layers

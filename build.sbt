@@ -10,6 +10,8 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 lazy val root = (project in file("."))
   .settings(
     name := "ann",
+    run / javaOptions += "-Xmx4G",
+    fork := true,
     libraryDependencies ++=
       Seq(
         "org.scala-lang.modules" %% "scala-parallel-collections" % "1.0.0",

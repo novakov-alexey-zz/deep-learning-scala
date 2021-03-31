@@ -1,5 +1,6 @@
 package examples
 
+import mnistCommon._
 import ml.transformation.{castTo, castFromTo}
 import ml.tensors.api._
 import ml.tensors.ops._
@@ -12,33 +13,20 @@ import java.nio.file.Path
 import scala.reflect.ClassTag
 
 @main def MNIST() =
-  val dataset = MnistLoader.loadData[Double]("images")  
+  type Precision = Float
+  val dataset = MnistLoader.loadData[Precision](imageDir)
+  val accuracy = accuracyMnist[Precision]
 
-  def accuracyMnist[T: ClassTag: Ordering](using n: Numeric[T]) = new Metric[T]:
-    val name = "accuracy"
-    
-    def matches(actual: Tensor[T], predicted: Tensor[T]): Int =      
-      val predictedArgMax = predicted.argMax      
-      actual.argMax.equalRows(predictedArgMax)
-      
-  val accuracy = accuracyMnist[Double]    
-  val ann = Sequential[Double, Adam, HeNormal](
+  val ann = Sequential[Precision, Adam, HeNormal](
     crossEntropy,
     learningRate = 0.001,
     metrics = List(accuracy),
     batchSize = 128,
-    gradientClipping = clipByValue(5.0d)
+    gradientClipping = clipByValue(5.0),
+    printStepTps = true
   )
     .add(Dense(relu, 50))      
     .add(Dense(softmax, 10))
-  
-  val encoder = OneHotEncoder(
-    classes = (0 to 9).map(i => (i.toDouble, i.toDouble)).toMap)  
-
-  def prepareData(x: Tensor[Double], y: Tensor[Double]) =
-    val xData = x.map(_ / 255d) // normalize to [0,1] range
-    val yData = encoder.transform(y.as1D)
-    (xData, yData) 
 
   val (xTrain, yTrain) = prepareData(dataset.trainImage, dataset.trainLabels)
   val start = System.currentTimeMillis()
