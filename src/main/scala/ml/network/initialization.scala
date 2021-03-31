@@ -13,7 +13,8 @@ trait ParamsInitializer[A, B]:
 
   def biases(length: Int): Tensor1D[A]
   
-  def weights4D(tensors: Int, cubes: Int, rows: Int, cols: Int)(using c: ClassTag[A], n: Numeric[A]): Tensor4D[A] = 
+  def weights4D(shape: List[Int])(using c: ClassTag[A], n: Numeric[A]): Tensor4D[A] = 
+    val tensors :: cubes :: rows :: cols :: Nil = shape
     (0 until tensors).map(_ =>  (0 until cubes).toArray.map(_ => weights(rows,  cols))).toArray.as4D    
 
 // support Initializers

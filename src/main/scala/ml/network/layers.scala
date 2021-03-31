@@ -86,7 +86,7 @@ case class Conv2D[T: ClassTag](
 
   override def init[U, V](prevShape: List[Int], initializer: ParamsInitializer[T, V], optimizer: Optimizer[U]): Conv2D[T] =        
     val images :: channels :: height :: width :: _ = prevShape    
-    val w = initializer.weights4D(filterCount, channels, kernel._1, kernel._2)
+    val w = initializer.weights4D(List(filterCount, channels, kernel._1, kernel._2))
     val b = initializer.biases(filterCount)
     val optimizerParams = optimizer.init(w, b)        
     val rows = (height - kernel._1) / strides._1 + 1
