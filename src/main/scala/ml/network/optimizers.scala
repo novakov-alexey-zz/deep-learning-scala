@@ -151,5 +151,8 @@ trait GradientClipping[T] extends (Tensor[T] => Tensor[T])
 object GradientClippingApi:
   def clipByValue[T: Fractional: ClassTag](value: T): GradientClipping[T] = 
     _.clipInRange(-value, value)
+  
+  def clipByNorm[T: Fractional: ClassTag](value: T): GradientClipping[T] = 
+    _.clipByNorm(value)
 
-  def noClipping[T]: GradientClipping[T] = t => t
+  inline def noClipping[T]: GradientClipping[T] = t => t
