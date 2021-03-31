@@ -20,6 +20,7 @@ object api:
   export ml.network.Sequential
   export ml.network.Model
   export ml.network.GradientClippingApi.*
+  export ml.network.GradientClipping
   export ml.network.MetricApi.*
   export ml.network.Metric
   export ml.network.LossApi.*
