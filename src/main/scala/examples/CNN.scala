@@ -17,29 +17,6 @@ import scala.reflect.ClassTag
   type Precision = Float
   val accuracy = accuracyMnist[Precision]
 
-  // type CNNNormal
-  // given [T: ClassTag: Numeric]: ParamsInitializer[T, CNNNormal] with
-  //   val rnd = new Random() 
-
-  //   def gen(scale: Double): T = 
-  //     castFromTo[Double, T] {
-  //       val v = rnd.nextGaussian + 0.01d
-  //       v * scale
-  //     }
-
-  //   override def weights4D(shape: List[Int])(using c: ClassTag[T], n: Numeric[T]): Tensor4D[T] = 
-  //     val tensors :: cubes :: rows :: cols :: _ = shape
-  //     val size = shape.reduce(_ * _)
-  //     val scale = math.sqrt(2d / size)
-  //     def w2d = Tensor2D(Array.fill(rows)(Array.fill[T](cols)(gen(scale))))
-  //     (0 until tensors).map(_ =>  (0 until cubes).toArray.map(_ => w2d)).toArray.as4D
-
-  //   override def weights(rows: Int, cols: Int): Tensor2D[T] =
-  //     Tensor2D(Array.fill(rows)(Array.fill[T](cols)(gen(rows))))
-
-  //   override def biases(length: Int): Tensor1D[T] = 
-  //     inits.zeros(length)
-
   def clipByNorm[T: Fractional: ClassTag](norm: T) = new GradientClipping[T]:     
     def apply(t: Tensor[T]) =
       t match
@@ -50,16 +27,16 @@ import scala.reflect.ClassTag
 
   val cnn = Sequential[Precision, Adam, HeNormal](
     crossEntropy,
-    learningRate = 0.001,
+    learningRate = 0.0015,
     metrics = List(accuracy),
     batchSize = 128,
-    gradientClipping = clipByNorm(1.0),
+    gradientClipping = clipByNorm(10.0),
     printStepTps = true
   )    
-    .add(Conv2D(relu, 16, kernel = (5, 5)))    
-    .add(MaxPool(strides = (1, 1), pool = (2, 2), padding = false))       
+    .add(Conv2D(relu, 8, kernel = (5, 5)))    
+    .add(MaxPool(strides = (2, 2), window = (4, 4), padding = false))    
     .add(Flatten2D())
-    .add(Dense(relu, 32))      
+    .add(Dense(relu, 64))      
     .add(Dense(softmax, 10))
   
   val dataset = MnistLoader.loadData[Precision](imageDir, flat = false)
