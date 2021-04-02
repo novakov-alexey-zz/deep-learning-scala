@@ -53,7 +53,7 @@ case class Dense[T: ClassTag](
     val optimizerParams = optimizer.init(w, b)
     copy(w = Some(w), b = Some(b), shape = List(inputs, units), optimizerParams = optimizerParams)
 
-  override def apply(x: Tensor[T]): Activation[T] =    
+  override def apply(x: Tensor[T]): Activation[T] =
     val z = x * w + b 
     val a = f(z)
     Activation(x, z, a)
@@ -96,20 +96,20 @@ case class Conv2D[T: ClassTag](
   
   override def apply(x: Tensor[T]): Activation[T] =
     val z = (w, b) match
-      case (Some(w), Some(b)) => forward(kernel, strides, b, x, w)
-      case _ => x // does nothing when one the params is empty    
+      case (Some(w), Some(b)) => forward(kernel, strides, x, w, b)
+      case _ => x // does nothing when one of the params is empty    
     val a = f(z)    
     Activation(x, z, a)
 
-  private def forward(kernel: (Int, Int), stride: (Int, Int), bias: Tensor[T], x: Tensor[T], w: Tensor[T]): Tensor[T] =
+  private def forward(kernel: (Int, Int), stride: (Int, Int), x: Tensor[T], w: Tensor[T], b: Tensor[T]): Tensor[T] =
     val (images, filters) = (x.as4D, w.as4D)    
     
     def filterImage(image: Array[Array[Array[T]]]) =
-      filters.data.zip(bias.as1D.data).map { (f, bias) =>
+      filters.data.zip(b.as1D.data).map { (f, b) =>
         val filtered = f.zip(image).map { (fc, ic) =>
           conv(fc.as2D, ic.as2D, kernel, stride)
         }.reduce(_ + _)
-        filtered + bias.asT
+        filtered + b.asT
       }
     
     images.data.par.map(filterImage).toArray.as4D    
@@ -196,7 +196,7 @@ case class Conv2D[T: ClassTag](
     copy(w = updatedW, b = updatedB, optimizerParams = optimizerParams)    
 
 case class MaxPool[T: ClassTag: Numeric](
-    pool: (Int, Int) = (2, 2), 
+    window: (Int, Int) = (2, 2), 
     strides: (Int, Int) = (1, 1),     
     shape: List[Int] = Nil,
     shape2D: (Int, Int) = (0, 0),
@@ -206,26 +206,26 @@ case class MaxPool[T: ClassTag: Numeric](
   override def init[U, V](prevShape: List[Int]): Layer[T] =
     val (a :: b :: rows :: cols :: _) = prevShape
     val pad = if padding then 1 else 0
-    val height = (rows - pool._1 + pad) / strides._1 + 1
-    val width = (cols - pool._2 + pad) / strides._2 + 1
+    val height = (rows - window._1 + pad) / strides._1 + 1
+    val width = (cols - window._2 + pad) / strides._2 + 1
     val shape = List(a, b, height, width)
     copy(shape = shape, shape2D = (height, width))
 
-  def apply(x: Tensor[T]): Activation[T] =    
+  def apply(x: Tensor[T]): Activation[T] =        
     val pooled = x.as4D.data.map(_.map(c => poolMax(c.as2D))).as4D
     Activation(x, pooled, pooled)
   
-  private def imageRegions(image: Tensor2D[T], kernel: Int, stride: Int) =
+  private def imageRegions(image: Tensor2D[T], window: (Int, Int), strides: (Int, Int)) =
     val (rows, cols) = shape2D
-    for i <- 0 until rows by stride yield   
-      for j <- 0 until cols by stride yield          
-        (image.slice((i, i + kernel), (j, j + kernel)).as2D, i, j)
+    for i <- 0 until rows by strides._1 yield   
+      for j <- 0 until cols by strides._2 yield          
+        (image.slice((i, i + window._1), (j, j + window._2)).as2D, i, j)
         
   private def poolMax(image: Tensor2D[T]): Tensor2D[T] =
     val (rows, cols) = shape2D
     val out = Array.ofDim(rows, cols)
     val pooled = 
-      for (region, i, j) <- imageRegions(image, pool._1, strides._1).flatten yield            
+      for (region, i, j) <- imageRegions(image, window, strides).flatten yield            
         out(i)(j) = region.max
     out.as2D
 
@@ -239,7 +239,7 @@ case class MaxPool[T: ClassTag: Numeric](
       imageChannels.zip(deltaChannels).map { (ic, dc) =>
         val image = ic.as2D   
         val out = image.zero.as2D.data        
-        for (region, i, j) <- imageRegions(image, pool._1, strides._1).flatten yield            
+        for (region, i, j) <- imageRegions(image, window, strides).flatten yield            
           val (a, b) = maxIndex(region)        
           out(i + a)(j + b) = dc(i)(j)      
         out

@@ -398,6 +398,7 @@ object TensorOps:
       case Tensor0D(data) => data
       case Tensor1D(data) => data.sum
       case Tensor2D(data) => data.map(_.sum).sum
+      case Tensor4D(data) => data.map(_.map(_.map(_.sum).sum).sum).sum
       case _ => notImplementedError(t :: Nil)
   
   def sumRows[T: Numeric: ClassTag](t: Tensor[T]): Tensor[T] =
