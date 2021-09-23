@@ -13,7 +13,8 @@ import java.nio.file.Path
 import java.util.Random
 import scala.reflect.ClassTag
 
-@main def CNN() =
+@main 
+def CNN() =
   type Precision = Float
   val accuracy = accuracyMnist[Precision]
 

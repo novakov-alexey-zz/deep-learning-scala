@@ -14,7 +14,8 @@ import scala.collection.parallel.CollectionConverters._
 
 import java.io.{File,PrintWriter}
 
-@main def linearRegression() = lrTest(false)
+@main 
+def linearRegression() = lrTest(false)
 
 def lrTest(fromTest: Boolean = true) =   
   type Precision = Float
@@ -25,7 +26,7 @@ def lrTest(fromTest: Boolean = true) =
   def batch(batchSize: Int): (ArrayBuffer[Precision], ArrayBuffer[Precision]) =
     val inputs = ArrayBuffer.empty[Precision]
     val outputs = ArrayBuffer.empty[Precision]
-    def noise = random.nextFloat / 5
+    def noise = 0//random.nextFloat / 5
     (0 until batchSize).foldLeft(inputs, outputs) { case ((x, y), _) =>        
         val rnd = random.nextFloat
         x += rnd + noise
@@ -37,9 +38,9 @@ def lrTest(fromTest: Boolean = true) =
 
   val ann = Sequential[Precision, Adam, RandomUniform](
     meanSquareError,
-    learningRate = 0.0012,    
+    learningRate = 0.001,    
     batchSize = 16,
-    gradientClipping = clipByValue(5.0)
+    gradientClipping = _.clipByNorm(10.0)
   ).add(Dense())    
 
   val (xBatch, yBatch) = batch(10000)

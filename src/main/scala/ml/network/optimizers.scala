@@ -114,7 +114,7 @@ object optimizers:
             val (updated, weight) = (layer, w, b) match
               case (o: Optimizable[T], Some(w), Some(b)) =>
                 val batchSize = n.fromInt(a.x.length)
-                val wGradient = cfg.clip(w)
+                val wGradient = cfg.clip(w) :/ batchSize
                 val bGradient = cfg.clip(b).sumRows :/ batchSize
                 val corrW = cfg.learningRate * wGradient
                 val corrB = cfg.learningRate * bGradient
