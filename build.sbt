@@ -19,9 +19,7 @@ lazy val root = (project in file("."))
       )
   )
 
-scalacOptions ++=
-
-Seq(
+scalacOptions ++= Seq(
   "-encoding",
   "UTF-8",
   "-feature",
